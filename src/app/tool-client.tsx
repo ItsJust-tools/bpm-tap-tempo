@@ -18,7 +18,7 @@ import {
   ToolToolbar,
   ToolSidebar,
 } from '@/tool';
-import { caseConverterTool } from '@/tool/tool-definition';
+import { markdownTool as markdownToolDef } from '@/tool/tool-definition';
 import type { ToolState } from '@/tool/types';
 import { DEFAULT_STATE } from '@/tool/types';
 
@@ -35,7 +35,7 @@ export default function ToolClient() {
     StatusBar?: ComponentType<{ children?: ReactNode }>;
   };
   const canvasRef = useRef<HTMLDivElement>(null);
-  const tool = useTool<ToolState>(caseConverterTool, canvasRef);
+  const tool = useTool<ToolState>(markdownToolDef, canvasRef);
   const setToolData = tool.state.setData;
   const showToast = tool.toast;
   const [isSharing, setIsSharing] = useState(false);
@@ -73,7 +73,7 @@ export default function ToolClient() {
       const serialized = decompressFromEncodedURIComponent(encodedState);
       if (!serialized) throw new Error('Invalid shared URL');
       const parsed: unknown = JSON.parse(serialized);
-      const deserialized = caseConverterTool.deserialize(parsed);
+      const deserialized = markdownToolDef.deserialize(parsed);
       if (!deserialized.success) throw new Error(deserialized.error);
       setToolData(deserialized.data);
       showToast('Loaded state from shared URL', 'success');
@@ -86,7 +86,7 @@ export default function ToolClient() {
   const handleShare = useCallback(async () => {
     setIsSharing(true);
     try {
-      const serialized = caseConverterTool.serialize(state);
+      const serialized = markdownToolDef.serialize(state);
       const encodedState = compressToEncodedURIComponent(serialized);
       if (!encodedState) throw new Error('Failed to encode state for URL');
       const url = new URL(window.location.href);
@@ -115,15 +115,7 @@ export default function ToolClient() {
   }, [showToast, state, title]);
 
   const handleClear = useCallback(() => {
-    setToolData(() => ({ ...DEFAULT_STATE, input: '' }));
-  }, [setToolData]);
-
-  const handleUndo = useCallback(() => {
-    setToolData((prev) => {
-      const [last, ...rest] = prev.history;
-      if (last === undefined) return prev;
-      return { ...prev, input: last, history: rest };
-    });
+    setToolData(() => ({ ...DEFAULT_STATE, markdown: '' }));
   }, [setToolData]);
 
   const toolbarContent = (
@@ -151,7 +143,6 @@ export default function ToolClient() {
       fontSize={fontSize}
       onStateChange={handleStateChange}
       onClear={handleClear}
-      onUndo={handleUndo}
     />
   );
 
@@ -172,6 +163,7 @@ export default function ToolClient() {
         )}
       </span>
       <span className="status-slot status-slot-font-size">{fontSize}px</span>
+      <span className="status-slot">Markdown: {state.markdown.length} chars</span>
       <span className="status-slot status-slot-tool-version">Tool v{toolConfig.version}</span>
       <span className="status-slot status-slot-template-version">
         Template v{templateBaseVersion}

@@ -12,7 +12,6 @@ interface ToolCanvasProps {
   canvasRef?: React.RefObject<HTMLDivElement | null>;
   onStateChange?: (updater: (prev: ToolState) => ToolState) => void;
   onClear?: () => void;
-  onUndo?: () => void;
 }
 
 export function ToolCanvas({
@@ -22,7 +21,6 @@ export function ToolCanvas({
   canvasRef,
   onStateChange,
   onClear,
-  onUndo,
 }: ToolCanvasProps) {
   const handleChange = useCallback(
     (next: ToolState) => {
@@ -36,11 +34,11 @@ export function ToolCanvas({
       ref={canvasRef}
       className="converter-canvas"
       role="application"
-      aria-label="Case converter canvas"
+      aria-label="Markdown to HTML converter canvas"
       style={{ fontSize: `${fontSize}px` }}
     >
       {onClear ? <Toolbar state={state} onChange={handleChange} onClear={onClear} /> : null}
-      <Canvas state={state} onChange={handleChange} onUndo={onUndo} />
+      <Canvas state={state} onChange={handleChange} />
       {readOnly ? null : null}
     </div>
   );

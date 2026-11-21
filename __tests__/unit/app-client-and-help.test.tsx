@@ -38,7 +38,10 @@ vi.mock('@itsjust/core', () => ({
   ),
   useTool: () => ({
     state: {
-      data: { input: 'Hello', multiLine: false, history: [] },
+      data: {
+        markdown: 'Hello',
+        options: { gfm: true, hardLineBreaks: false, headingIds: true, sanitize: true },
+      },
       setData: mockSetData,
       isDirty: false,
       lastSaved: 'just now',
@@ -54,29 +57,24 @@ vi.mock('@itsjust/core', () => ({
 
 vi.mock('@/tool', () => ({
   toolConfig: {
-    id: '1795194271',
-    name: 'Base Converter',
+    id: 'tool-1795251874',
+    name: 'Markdown to HTML Converter',
     version: '1.0.0',
     features: { sidebar: true },
-    theme: { brand: 'Base Converter' },
+    theme: { brand: 'Markdown to HTML Converter' },
   },
   templateBaseVersion: '1.1.0',
-  ToolCanvas: ({ state }: { state: { input: string } }) => <div>canvas:{state.input}</div>,
+  ToolCanvas: ({ state }: { state: { markdown: string } }) => <div>canvas:{state.markdown}</div>,
   ToolToolbar: () => <div>toolbar</div>,
-  ToolSidebar: ({ text }: { text: string }) => <div>sidebar:{text}</div>,
+  ToolSidebar: ({ state }: { state: { markdown: string } }) => <div>sidebar:{state.markdown}</div>,
 }));
 
 vi.mock('@/tool/tool-definition', () => ({
-  caseConverterTool: {
+  markdownTool: {
     serialize: (state: unknown) => JSON.stringify(state),
-    deserialize: () => ({ success: true, data: { input: 'From Shared Url', multiLine: false, history: [] } }),
-  },
-  baseConverterTool: {
-    serialize: (state: unknown) => JSON.stringify(state),
-    deserialize: () => ({ success: true, data: { input: 'From Shared Url', multiLine: false, history: [] } }),
+    deserialize: () => ({ success: true, data: { markdown: 'From Shared Url' } }),
   },
 }));
-vi.mocked;
 
 describe('app client and help page', () => {
   beforeEach(() => {

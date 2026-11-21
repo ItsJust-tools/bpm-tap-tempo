@@ -2,13 +2,19 @@ export { default as toolConfig } from './tool.config';
 export { templateBaseVersion } from './template-metadata';
 export { templateMetadata, getPublicSiteUrl } from './template-metadata';
 export {
-  caseConverterTool,
-  baseConverterTool,
-  tokenize,
-  tokensToCase,
-  convertAll,
+  markdownTool,
+  markdownToHtml,
+  markdownToHtmlWithToc,
+  renderBlocks,
+  renderInlineSpans,
+  sanitizeHtml,
+  isSafeUrl,
+  slugify,
+  uniqueSlug,
+  escapeHtml,
   computeStats,
-  pushHistory,
+  buildStyledDocument,
+  extractTocFromHtml,
 } from './tool-definition';
 export { ToolCanvas } from './components/tool-canvas';
 export { ToolToolbar } from './components/tool-toolbar';
@@ -18,9 +24,8 @@ export { Sidebar } from './components/Sidebar';
 export { Toolbar } from './components/Toolbar';
 export type {
   ToolState,
-  CaseFormat,
-  CaseFormatDef,
-  ConversionRow,
-  TextStats,
+  MarkdownOptions,
+  DocStats,
+  TocEntry,
 } from './types';
-export { CASE_FORMATS, DEFAULT_STATE, MAX_HISTORY } from './types';
+export { DEFAULT_STATE, DEFAULT_OPTIONS } from './types';

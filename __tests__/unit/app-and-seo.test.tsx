@@ -12,11 +12,12 @@ import { cn } from '@/lib/utils';
 import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
-import { baseConverterTool } from '@/tool/tool-definition';
+import { markdownTool } from '@/tool/tool-definition';
 import { ToolCanvas } from '@/tool/components/tool-canvas';
 import { ToolSidebar } from '@/tool/components/tool-sidebar';
 import { ToolToolbar } from '@/tool/components/tool-toolbar';
 import { DEFAULT_STATE } from '@/tool/types';
+import type { ExporterLoader } from '@itsjust/core';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
@@ -92,39 +93,55 @@ describe('app and seo', () => {
   it('covers tool definition and helper exports', async () => {
     expect(cn('a', undefined, 'b', false, null, 'c')).toBe('a b c');
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
-    expect(baseConverterTool.deserialize({ input: 'ff' })).toEqual({
+    expect(markdownTool.deserialize({ markdown: '# hi' })).toEqual({
       success: true,
       data: {
-        input: 'ff',
-        multiLine: false,
-        history: [],
+        markdown: '# hi',
+        options: DEFAULT_STATE.options,
       },
     });
-    expect(baseConverterTool.deserialize({ nope: true })).toEqual({
+    expect(markdownTool.deserialize({ nope: true })).toEqual({
       success: false,
-      error: 'Invalid data format: expected { input: string, multiLine?: boolean, history?: string[] }',
+      error: 'Invalid data format: expected { markdown: string, options?: {...} }',
     });
-    expect(baseConverterTool.serialize({ ...DEFAULT_STATE, input: '11' })).toContain('"input":"11"');
-    expect(baseConverterTool.deserialize({ input: '11', multiLine: true, history: ['a'] })).toEqual({
+    expect(markdownTool.serialize({ ...DEFAULT_STATE, markdown: '# new' })).toContain(
+      '"markdown":"# new"'
+    );
+    expect(
+      markdownTool.deserialize({
+        markdown: 'x',
+        options: { gfm: false, hardLineBreaks: true, headingIds: true, sanitize: 'no' as unknown as boolean },
+      })
+    ).toEqual({
       success: true,
-      data: { input: '11', multiLine: true, history: ['a'] },
+      data: {
+        markdown: 'x',
+        options: { gfm: false, hardLineBreaks: true, headingIds: true, sanitize: true },
+      },
     });
-    expect(baseConverterTool.id).toBe(toolConfig.id);
-    expect(baseConverterTool.name).toBe(toolConfig.name);
+    const exporters = (markdownTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
+    expect(exporters).toHaveLength(4);
+    const first = exporters[0];
+    expect(first).toBeDefined();
+    if (!first) throw new Error('missing exporter');
+    const png = await (first.loader as ExporterLoader)();
+    const resolved = 'default' in png ? png.default : png.exporter;
+    expect(resolved.format).toBe('png');
   });
 
   it('renders tool components', () => {
     render(
       <>
         <ToolToolbar />
-        <ToolSidebar state={{ ...DEFAULT_STATE, input: 'ff' }} fontSize={16} onFontSizeChange={() => {}} />
-        <ToolCanvas state={{ ...DEFAULT_STATE, input: 'ff' }} fontSize={16} />
+        <ToolSidebar state={{ ...DEFAULT_STATE, markdown: '# Hello' }} fontSize={16} onFontSizeChange={() => {}} />
+        <ToolCanvas state={DEFAULT_STATE} fontSize={16} />
       </>
     );
 
     expect(screen.getByRole('link', { name: 'Open help page' })).toBeInTheDocument();
-    expect(screen.getByText('Characters')).toBeInTheDocument();
-    expect(screen.getByRole('application', { name: 'Case converter canvas' })).toBeInTheDocument();
-    expect(screen.getByTestId('case-row-snake')).toHaveTextContent('ff');
+    expect(screen.getByTestId('markdown-canvas')).toBeInTheDocument();
+    expect(screen.getByTestId('markdown-input')).toBeInTheDocument();
+    expect(screen.getByTestId('html-preview')).toBeInTheDocument();
+    expect(screen.getByTestId('tool-sidebar-stats')).toBeInTheDocument();
   });
 });

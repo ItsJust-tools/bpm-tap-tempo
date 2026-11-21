@@ -1,71 +1,94 @@
 'use client';
 
 import React from 'react';
-import { computeStats, convertAll } from '../tool-definition';
+import { markdownToHtmlWithToc, computeStats } from '../tool-definition';
 import type { ToolState } from '../types';
 
 interface SidebarProps {
   state: ToolState;
-  onChange?: (state: ToolState) => void;
-  fontSize?: number;
-  onFontSizeChange?: (delta: number) => void;
+  onStateChange: (updater: (prev: ToolState) => ToolState) => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ state, fontSize, onFontSizeChange }) => {
-  const stats = computeStats(state.input);
-  const rows = convertAll(state);
+export const Sidebar: React.FC<SidebarProps> = ({ state, onStateChange }) => {
+  const result = React.useMemo(
+    () => markdownToHtmlWithToc(state.markdown, state.options),
+    [state.markdown, state.options]
+  );
+  const stats = React.useMemo(() => computeStats(state.markdown, result.html), [state.markdown, result.html]);
+  const { toc } = result;
+
+  const updateOption = (key: keyof ToolState['options']) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    onStateChange((prev) => ({ ...prev, options: { ...prev.options, [key]: e.target.checked } }));
 
   return (
-    <div className="converter-sidebar p-3 text-sm space-y-4" data-testid="case-sidebar">
+    <div className="converter-sidebar space-y-4" data-testid="markdown-sidebar">
       <div className="sidebar-section">
-        <h3>Stats</h3>
-        <dl className="stats-list text-xs">
-          <div className="stat-row flex justify-between">
+        <h3>Document Stats</h3>
+        <dl className="stats-list" data-testid="doc-stats">
+          <div className="stat-row">
             <dt>Words</dt>
             <dd>{stats.words.toLocaleString()}</dd>
           </div>
-          <div className="stat-row flex justify-between">
+          <div className="stat-row">
             <dt>Characters</dt>
-            <dd>{stats.chars.toLocaleString()}</dd>
+            <dd>{stats.characters.toLocaleString()}</dd>
           </div>
-          <div className="stat-row flex justify-between">
-            <dt>Lines</dt>
-            <dd>{stats.lines.toLocaleString()}</dd>
+          <div className="stat-row">
+            <dt>Headings</dt>
+            <dd>{stats.headings.toLocaleString()}</dd>
           </div>
-          <div className="stat-row flex justify-between">
-            <dt>Font size</dt>
-            <dd>
-              <button
-                type="button"
-                aria-label="Decrease font size"
-                onClick={() => onFontSizeChange?.(-2)}
-                className="mr-2 rounded border border-gray-300 px-2 text-xs dark:border-gray-700"
-              >
-                A-
-              </button>
-              <span className="font-mono text-xs">{fontSize ?? 16}px</span>
-              <button
-                type="button"
-                aria-label="Increase font size"
-                onClick={() => onFontSizeChange?.(2)}
-                className="ml-2 rounded border border-gray-300 px-2 text-xs dark:border-gray-700"
-              >
-                A+
-              </button>
-            </dd>
+          <div className="stat-row">
+            <dt>Links</dt>
+            <dd>{stats.links.toLocaleString()}</dd>
+          </div>
+          <div className="stat-row">
+            <dt>Images</dt>
+            <dd>{stats.images.toLocaleString()}</dd>
+          </div>
+          <div className="stat-row">
+            <dt>Code blocks</dt>
+            <dd>{stats.codeBlocks.toLocaleString()}</dd>
           </div>
         </dl>
       </div>
+
       <div className="sidebar-section">
-        <h3>Conversions</h3>
-        <ul className="text-xs space-y-1">
-          {rows.map((row) => (
-            <li key={row.format} className="truncate">
-              <span className="text-gray-500 dark:text-gray-400">{row.label}:</span>{' '}
-              <code>{row.value || '—'}</code>
-            </li>
-          ))}
-        </ul>
+        <h3>Options</h3>
+        <div className="space-y-2 text-xs">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={state.options.gfm} onChange={updateOption('gfm')} aria-label="GFM" data-testid="sidebar-option-gfm" />
+            GitHub-flavored Markdown
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={state.options.hardLineBreaks} onChange={updateOption('hardLineBreaks')} aria-label="Hard line breaks" data-testid="sidebar-option-hardLineBreaks" />
+            Hard line breaks
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={state.options.headingIds} onChange={updateOption('headingIds')} aria-label="Heading IDs" data-testid="sidebar-option-headingIds" />
+            Heading IDs & TOC
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={state.options.sanitize} onChange={updateOption('sanitize')} aria-label="Sanitize" data-testid="sidebar-option-sanitize" />
+            Sanitize HTML output
+          </label>
+        </div>
+      </div>
+
+      <div className="sidebar-section">
+        <h3>Table of Contents</h3>
+        {toc.length === 0 ? (
+          <p className="text-xs text-gray-500 dark:text-gray-400">No headings found.</p>
+        ) : (
+          <ul className="toc-list text-xs space-y-1" data-testid="toc-list">
+            {toc.map((entry) => (
+              <li key={entry.id} style={{ paddingLeft: `${(entry.level - 1) * 10}px` }}>
+                <a href={`#${entry.id}`} className="toc-link text-blue-600 dark:text-blue-400 hover:underline">
+                  {entry.text}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

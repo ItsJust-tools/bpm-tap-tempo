@@ -1,16 +1,15 @@
 'use client';
 
 import React from 'react';
-import { convertAll, computeStats } from '../tool-definition';
-import type { ToolState } from '../types';
+import { markdownToHtml, markdownToHtmlWithToc, buildStyledDocument, computeStats } from '../tool-definition';
+import type { ToolState, DocStats } from '../types';
 
 interface CanvasProps {
   state: ToolState;
   onChange: (state: ToolState) => void;
-  onUndo?: () => void;
 }
 
-function CopyButton({ value, label }: { value: string; label: string }) {
+function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }) {
   const [copied, setCopied] = React.useState(false);
   const handleCopy = React.useCallback(async () => {
     try {
@@ -26,111 +25,126 @@ function CopyButton({ value, label }: { value: string; label: string }) {
       type="button"
       onClick={handleCopy}
       className="copy-btn text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-      aria-label={`Copy ${label} value`}
+      aria-label={label}
     >
-      {copied ? 'Copied!' : 'Copy'}
+      {copied ? 'Copied!' : label}
     </button>
   );
 }
 
-export const Canvas: React.FC<CanvasProps> = ({ state, onChange, onUndo }) => {
-  const rows = React.useMemo(() => convertAll(state), [state]);
-  const stats = React.useMemo(() => computeStats(state.input), [state.input]);
+function DownloadButton({ content, filename }: { content: string; filename: string }) {
+  const handleDownload = React.useCallback(() => {
+    const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, [content, filename]);
+  return (
+    <button
+      type="button"
+      onClick={handleDownload}
+      className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
+      aria-label="Download HTML file"
+    >
+      Download .html
+    </button>
+  );
+}
+
+export const Canvas: React.FC<CanvasProps> = ({ state, onChange }) => {
+  const { markdown, options } = state;
+  const result = React.useMemo(
+    () => markdownToHtmlWithToc(markdown, options),
+    [markdown, options]
+  );
+  const stats: DocStats = React.useMemo(
+    () => computeStats(markdown, result.html),
+    [markdown, result.html]
+  );
 
   const update = (patch: Partial<ToolState>) => onChange({ ...state, ...patch });
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    update({ input: e.target.value, history: [state.input, ...state.history].slice(0, 50) });
-  };
-
-  const allText = rows.map((r) => `${r.label}: ${r.value}`).join('\n');
+  const updateOption = (key: keyof ToolState['options']) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      update({ options: { ...options, [key]: e.target.checked } });
 
   return (
-    <div className="p-4 space-y-4 overflow-y-auto h-full" data-testid="case-converter-canvas">
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <label
-            htmlFor="case-input"
-            className="text-xs font-medium uppercase tracking-wider text-gray-700 dark:text-gray-300"
-          >
-            Input text
+    <div className="p-4 flex flex-col gap-3 h-full overflow-y-auto" data-testid="markdown-canvas">
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            ['gfm', 'GFM'],
+            ['hardLineBreaks', 'Hard breaks'],
+            ['headingIds', 'Heading IDs'],
+            ['sanitize', 'Sanitize'],
+          ] as const
+        ).map(([key, label]) => (
+          <label key={key} className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={options[key]}
+              onChange={updateOption(key)}
+              aria-label={label}
+              data-testid={`option-${key}`}
+            />
+            {label}
           </label>
-          <div className="flex items-center gap-2">
-            {onUndo ? (
-              <button
-                type="button"
-                onClick={onUndo}
-                className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-                aria-label="Undo last conversion"
-              >
-                Undo
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => update({ input: '' })}
-              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-              aria-label="Clear input"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-        <textarea
-          id="case-input"
-          value={state.input}
-          onChange={handleInputChange}
-          placeholder="Type text to convert..."
-          rows={3}
-          data-testid="case-input"
-          className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
-        />
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={state.multiLine}
-            onChange={(e) => update({ multiLine: e.target.checked })}
-            data-testid="multiline-toggle"
-            aria-label="Multi-line mode"
-          />
-          Multi-line mode (convert each line independently)
-        </label>
-        <div className="stats-panel flex gap-4 text-xs text-gray-600 dark:text-gray-400" data-testid="stats-panel">
-          <span data-testid="stat-words">{stats.words} words</span>
-          <span data-testid="stat-chars">{stats.chars} chars</span>
-          <span data-testid="stat-lines">{stats.lines} lines</span>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        {rows.map((row) => (
-          <div
-            key={row.format}
-            className="case-row flex items-center gap-2"
-            data-testid={`case-row-${row.format}`}
-          >
-            <span className="case-label w-32 shrink-0 text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">
-              {row.label}
-            </span>
-            <code className="case-value flex-1 break-all rounded bg-gray-50 dark:bg-gray-900 px-2 py-1 text-sm">
-              {row.value}
-            </code>
-            <CopyButton value={row.value} label={row.label} />
-          </div>
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={() => {
-          void navigator.clipboard.writeText(allText);
-        }}
-        className="copy-all-btn text-xs px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700"
-        aria-label="Copy all conversions"
-        data-testid="copy-all"
-      >
-        Copy all
-      </button>
+      <div className="grid gap-3 md:grid-cols-2 flex-1 min-h-0">
+        <div className="flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium uppercase tracking-wider text-gray-700 dark:text-gray-300">
+              Markdown
+            </span>
+            <span className="text-xs text-gray-500">{stats.words} words</span>
+          </div>
+          <textarea
+            aria-label="Markdown input"
+            data-testid="markdown-input"
+            className="markdown-textarea flex-1 min-h-[300px] w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 font-mono text-sm text-gray-900 dark:text-gray-100 resize-y"
+            value={markdown}
+            onChange={(e) => update({ markdown: e.target.value })}
+            placeholder="# Write markdown here"
+            spellCheck={false}
+          />
+        </div>
+
+        <div className="flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+            <span className="text-xs font-medium uppercase tracking-wider text-gray-700 dark:text-gray-300">
+              HTML Preview
+            </span>
+            <div className="flex items-center gap-1">
+              <CopyButton value={result.html} label="Copy HTML" />
+              <DownloadButton
+                content={buildStyledDocument(result.html, 'Document')}
+                filename="document.html"
+              />
+            </div>
+          </div>
+          <div
+            aria-label="HTML preview"
+            data-testid="html-preview"
+            className="flex-1 min-h-[300px] overflow-auto rounded-md border border-gray-200 dark:border-gray-800 p-3 prose-preview"
+            dangerouslySetInnerHTML={{ __html: result.html }}
+          />
+        </div>
+      </div>
+
+      <div className="stats-strip flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-300" data-testid="canvas-stats">
+        <span>Words: {stats.words}</span>
+        <span>Characters: {stats.characters}</span>
+        <span>Headings: {stats.headings}</span>
+        <span>Links: {stats.links}</span>
+        <span>Images: {stats.images}</span>
+        <span>Code blocks: {stats.codeBlocks}</span>
+      </div>
     </div>
   );
 };

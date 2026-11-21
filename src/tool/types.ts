@@ -1,58 +1,51 @@
-export type CaseFormat =
-  | 'camel'
-  | 'pascal'
-  | 'snake'
-  | 'kebab'
-  | 'constant'
-  | 'title'
-  | 'dot'
-  | 'train'
-  | 'sentence';
-
-export interface CaseFormatDef {
-  id: CaseFormat;
-  label: string;
+export interface DocStats {
+  words: number;
+  characters: number;
+  headings: number;
+  links: number;
+  images: number;
+  codeBlocks: number;
 }
 
-export const CASE_FORMATS: CaseFormatDef[] = [
-  { id: 'camel', label: 'camelCase' },
-  { id: 'pascal', label: 'PascalCase' },
-  { id: 'snake', label: 'snake_case' },
-  { id: 'kebab', label: 'kebab-case' },
-  { id: 'constant', label: 'CONSTANT_CASE' },
-  { id: 'title', label: 'Title Case' },
-  { id: 'dot', label: 'dot.case' },
-  { id: 'train', label: 'train-case' },
-  { id: 'sentence', label: 'Sentence case' },
-];
+export type TocEntry = { level: number; text: string; id: string };
 
-/** Maximum stored entries in the input history for undo. */
-export const MAX_HISTORY = 50;
+export interface MarkdownOptions {
+  gfm: boolean;
+  hardLineBreaks: boolean;
+  headingIds: boolean;
+  sanitize: boolean;
+}
 
 export interface ToolState {
-  /** Raw multi-line input as typed by the user. */
-  input: string;
-  /** When true, each line is converted independently. */
-  multiLine: boolean;
-  /** Previous inputs (most recent first) for undoing the last conversion. */
-  history: string[];
+  markdown: string;
+  options: MarkdownOptions;
 }
 
 export const DEFAULT_STATE: ToolState = {
-  input: 'parse HTML API response text',
-  multiLine: false,
-  history: [],
+  markdown: [
+    '# Hello Markdown',
+    '',
+    'This is a **Markdown to HTML** converter with *GFM* support.',
+    '',
+    '- [x] Write markdown',
+    '- [ ] Preview HTML',
+    '',
+    '| Feature | Status |',
+    '| ------- | ------ |',
+    '| Tables  | Works  |',
+    '',
+    '```js',
+    "console.log('hi');",
+    '```',
+    '',
+    'Visit <https://example.com> or see ~~strikethrough~~ text.',
+  ].join('\n'),
+  options: {
+    gfm: true,
+    hardLineBreaks: false,
+    headingIds: true,
+    sanitize: true,
+  },
 };
 
-export interface ConversionRow {
-  format: CaseFormat;
-  label: string;
-  /** Converted value for the current mode. */
-  value: string;
-}
-
-export interface TextStats {
-  words: number;
-  chars: number;
-  lines: number;
-}
+export const DEFAULT_OPTIONS: MarkdownOptions = { ...DEFAULT_STATE.options };
