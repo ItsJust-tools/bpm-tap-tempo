@@ -1,139 +1,234 @@
 import type { Tool, DeserializeResult } from '@itsjust/core';
 import toolConfig from './tool.config';
 import {
-  DEFAULT_PAUSE_DURATION,
+  CASE_FORMATS,
   DEFAULT_STATE,
-  DEFAULT_TONE_DURATION,
-  MAX_PAUSE_DURATION,
-  MAX_TONE_DURATION,
-  MIN_PAUSE_DURATION,
-  MIN_TONE_DURATION,
-  type DtmfKey,
-  type ScheduledTone,
+  MAX_HISTORY,
+  type CaseFormat,
+  type ConversionRow,
+  type TextStats,
   type ToolState,
-  type TonePairRow,
 } from './types';
 
-/** Standard DTMF low frequencies (rows of the keypad grid). */
-export const LOW_FREQUENCIES = [697, 770, 852, 941] as const;
-/** Standard DTMF high frequencies (columns of the keypad grid). */
-export const HIGH_FREQUENCIES = [1209, 1336, 1477, 1633] as const;
+/* ------------------------------------------------------------------ */
+/* Tokenization                                                        */
+/* ------------------------------------------------------------------ */
 
-/** Keypad grid layout: low-frequency rows x high-frequency columns. */
-export const KEYPAD_MATRIX: readonly (readonly (DtmfKey | null)[])[] = [
-  ['1', '2', '3', 'A'],
-  ['4', '5', '6', 'B'],
-  ['7', '8', '9', 'C'],
-  ['*', '0', '#', 'D'],
-];
+const DEFAULT_ACRONYMS = new Set([
+  'html',
+  'css',
+  'api',
+  'url',
+  'uri',
+  'http',
+  'https',
+  'xml',
+  'json',
+  'sql',
+  'id',
+  'ui',
+  'ux',
+  'csv',
+  'pdf',
+  'aws',
+  'ios',
+  'seo',
+]);
 
-export const DTMF_KEYS: readonly DtmfKey[] = KEYPAD_MATRIX.flat().filter((k): k is DtmfKey => k !== null);
+function isUpperCase(char: string): boolean {
+  return char >= 'A' && char <= 'Z';
+}
 
-/** Map every DTMF key to its exact tone-pair frequencies. */
-export function buildTonePairTable(): TonePairRow[] {
-  const rows: TonePairRow[] = [];
-  for (let r = 0; r < KEYPAD_MATRIX.length; r++) {
-    for (let c = 0; c < (KEYPAD_MATRIX[r]?.length ?? 0); c++) {
-      const key = KEYPAD_MATRIX[r]?.[c];
-      if (!key) continue;
-      rows.push({
-        key,
-        lowFrequency: LOW_FREQUENCIES[r] as number,
-        highFrequency: HIGH_FREQUENCIES[c] as number,
-        lowLabel: `${LOW_FREQUENCIES[r]} Hz`,
-        highLabel: `${HIGH_FREQUENCIES[c]} Hz`,
-      });
+/**
+ * Split text into word tokens. Handles:
+ * - whitespace, punctuation and separators ( _ - . ) as boundaries
+ * - camelCase humps (parseUser -> parse, User)
+ * - digit boundaries (html5 -> html, 5)
+ * - existing ALL-CAPS acronym runs (HTMLParser -> HTML, Parser)
+ */
+export function tokenize(input: string): string[] {
+  const tokens: string[] = [];
+  const cleaned = input.replace(/[^A-Za-z0-9_\-.]+/g, ' ');
+  for (const chunk of cleaned.split(/[\s_\-.\n]+/)) {
+    if (!chunk) continue;
+    tokens.push(...splitWord(chunk));
+  }
+  return tokens;
+}
+
+function splitWord(word: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  const flush = (): void => {
+    if (current) {
+      out.push(current);
+      current = '';
     }
+  };
+
+  const chars = [...word];
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i] ?? '';
+    if (/[0-9]/.test(char)) {
+      if (current && !/[0-9]/.test(current[current.length - 1] ?? '')) {
+        flush();
+      }
+      current += char;
+      continue;
+    }
+
+    if (isUpperCase(char)) {
+      // Find the full run of consecutive uppercase chars starting here.
+      let j = i;
+      while (j < chars.length && isUpperCase(chars[j] ?? '')) j++;
+      const capRun = chars.slice(i, j).join('');
+      const nextIsLower = j < chars.length && /[a-z]/.test(chars[j] ?? '');
+      if (nextIsLower && capRun.length >= 2) {
+        // e.g. HTTPServer -> HTTP + Server; IDFollower -> ID + Follower
+        flush();
+        out.push(capRun.slice(0, -1));
+        current = capRun.slice(-1);
+        i = j - 1;
+        continue;
+      }
+      if (current && /[a-z0-9]/.test(current[current.length - 1] ?? '')) {
+        flush();
+      }
+      current += char;
+      continue;
+    }
+
+    current += char;
   }
-  return rows;
+  flush();
+  return out;
 }
 
-export const TONE_PAIR_TABLE: TonePairRow[] = buildTonePairTable();
+/* ------------------------------------------------------------------ */
+/* Serializing tokens into target cases                                */
+/* ------------------------------------------------------------------ */
 
-const TONE_PAIR_BY_KEY = new Map<string, TonePairRow>(TONE_PAIR_TABLE.map((row) => [row.key, row]));
-
-/** True when the character is a valid DTMF key. */
-export function isDtmfKey(char: string): char is DtmfKey {
-  return TONE_PAIR_BY_KEY.has(char);
+function capitalize(word: string): string {
+  if (!word) return word;
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
 
-/**
- * Decode one DTMF tone pair to its key/symbol. Returns null when either
- * frequency is not part of the standard DTMF frequency set.
- */
-export function decodeTonePair(lowFrequency: number, highFrequency: number): DtmfKey | null {
-  const lowIndex = LOW_FREQUENCIES.indexOf(lowFrequency as (typeof LOW_FREQUENCIES)[number]);
-  const highIndex = HIGH_FREQUENCIES.indexOf(highFrequency as (typeof HIGH_FREQUENCIES)[number]);
-  if (lowIndex === -1 || highIndex === -1) return null;
-  return KEYPAD_MATRIX[lowIndex]?.[highIndex] ?? null;
+/** Words recognized as acronyms stay fully uppercase in mixed formats. */
+function acronymOf(word: string): string | null {
+  return DEFAULT_ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : null;
 }
 
-/**
- * Sanitize a dial string: keep only valid DTMF keys, dropping separators
- * (spaces, dashes) and any other invalid character.
- */
-export function sanitizeSequence(input: string): string {
-  return input
-    .toUpperCase()
-    .split('')
-    .filter((char) => isDtmfKey(char))
-    .join('');
-}
+const MINOR_WORDS = new Set([
+  'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'if', 'in',
+  'nor', 'of', 'on', 'or', 'so', 'the', 'to', 'up', 'yet',
+]);
 
-/**
- * Parse a dial string into scheduled tones: each valid key gets a tone with
- * the configured duration, separated by the configured pause. Invalid
- * characters are skipped. `toneDuration`/`pauseDuration` fall back to
- * defaults when out of range.
- */
-export function scheduleTones(
-  sequence: string,
-  toneDuration: number,
-  pauseDuration: number
-): ScheduledTone[] {
-  const tone = clampDuration(toneDuration, MIN_TONE_DURATION, MAX_TONE_DURATION, DEFAULT_TONE_DURATION);
-  const pause = clampDuration(pauseDuration, MIN_PAUSE_DURATION, MAX_PAUSE_DURATION, DEFAULT_PAUSE_DURATION);
-  const tones: ScheduledTone[] = [];
-  let cursor = 0;
-  for (const char of sequence.toUpperCase()) {
-    const row = TONE_PAIR_BY_KEY.get(char);
-    if (!row) continue;
-    tones.push({
-      key: row.key,
-      lowFrequency: row.lowFrequency,
-      highFrequency: row.highFrequency,
-      start: cursor,
-      duration: tone,
-    });
-    cursor += tone + pause;
+export function tokensToCase(tokens: string[], format: CaseFormat): string {
+  if (tokens.length === 0) return '';
+  const words = tokens;
+  switch (format) {
+    case 'camel':
+      return words
+        .map((w, i) => {
+          if (i === 0) return w.toLowerCase();
+          const ac = acronymOf(w);
+          if (ac) return ac;
+          return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        })
+        .join('');
+    case 'pascal':
+      return words
+        .map((w) => {
+          const ac = acronymOf(w);
+          if (ac) return ac;
+          return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        })
+        .join('');
+    case 'snake':
+      return words.map((w) => w.toLowerCase()).join('_');
+    case 'kebab':
+      return words.map((w) => w.toLowerCase()).join('-');
+    case 'constant':
+      return words.map((w) => w.toLowerCase()).join('_').toUpperCase();
+    case 'dot':
+      return words.map((w) => w.toLowerCase()).join('.');
+    case 'train':
+      return words
+        .map((w) => {
+          const ac = acronymOf(w);
+          if (ac) return ac;
+          return capitalize(w);
+        })
+        .join('-');
+    case 'title':
+      return words
+        .map((w, i) => {
+          const ac = acronymOf(w);
+          if (ac) return ac;
+          // Title Case: minor words stay lowercase unless first
+          const lower = w.toLowerCase();
+          if (i > 0 && MINOR_WORDS.has(lower)) return lower;
+          return capitalize(w);
+        })
+        .join(' ');
+    case 'sentence':
+      return words
+        .map((w, i) => {
+          const ac = acronymOf(w);
+          if (ac) return ac;
+          if (i === 0) return capitalize(w);
+          return w.toLowerCase();
+        })
+        .join(' ');
   }
-  return tones;
 }
 
-function clampDuration(value: number, min: number, max: number, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-  return Math.min(max, Math.max(min, value));
+/**
+ * Convert arbitrary text into every supported case format.
+ * When `multiLine` is true each non-empty line is converted independently
+ * and results are joined with the same line structure.
+ */
+export function convertAll(state: ToolState): ConversionRow[] {
+  const convert = (text: string): string[] => CASE_FORMATS.map((f) => tokensToCase(tokenize(text), f.id));
+  let values: string[];
+  if (state.multiLine) {
+    const lines = state.input.split('\n');
+    const perFormat: string[][] = CASE_FORMATS.map(() => []);
+    for (const line of lines) {
+      const converted = convert(line);
+      for (let i = 0; i < converted.length; i++) {
+        perFormat[i]?.push(converted[i] ?? '');
+      }
+    }
+    values = perFormat.map((fmtLines) => fmtLines.join('\n'));
+  } else {
+    values = convert(state.input);
+  }
+  return CASE_FORMATS.map((f, i) => ({ format: f.id, label: f.label, value: values[i] ?? '' }));
 }
 
-/** Total playback length in milliseconds (last tone end). */
-export function playbackDuration(tones: ScheduledTone[]): number {
-  if (tones.length === 0) return 0;
-  const last = tones[tones.length - 1];
-  if (!last) return 0;
-  return last.start + last.duration;
+/** Word / character / line counts for a given text. */
+export function computeStats(text: string): TextStats {
+  const trimmed = text.trim();
+  return {
+    words: trimmed ? trimmed.split(/\s+/).length : 0,
+    chars: text.length,
+    lines: text === '' ? 0 : text.split('\n').length,
+  };
 }
 
-/** Clamp and normalize tone duration into the allowed range. */
-export function clampToneDuration(value: number): number {
-  return clampDuration(value, MIN_TONE_DURATION, MAX_TONE_DURATION, DEFAULT_TONE_DURATION);
+/** Push a snapshot of the input onto history (most recent first). */
+export function pushHistory(history: string[], input: string): string[] {
+  if (!input) return history;
+  if (history[0] === input) return history;
+  return [input, ...history].slice(0, MAX_HISTORY);
 }
 
-/** Clamp and normalize pause duration into the allowed range. */
-export function clampPauseDuration(value: number): number {
-  return clampDuration(value, MIN_PAUSE_DURATION, MAX_PAUSE_DURATION, DEFAULT_PAUSE_DURATION);
-}
+/* ------------------------------------------------------------------ */
+/* Tool definition                                                     */
+/* ------------------------------------------------------------------ */
 
-export const dtmfTool: Tool<ToolState> = {
+export const caseConverterTool: Tool<ToolState> = {
   id: toolConfig.id,
   name: toolConfig.name,
   version: toolConfig.version,
@@ -142,25 +237,26 @@ export const dtmfTool: Tool<ToolState> = {
   serialize: (state) => JSON.stringify(state),
   deserialize: (data): DeserializeResult<ToolState> => {
     if (typeof data !== 'object' || data === null) {
-      return { success: false, error: 'Invalid data format: expected DTMF dial pad state object' };
+      return { success: false, error: 'Invalid data format: expected case converter state object' };
     }
     const v = data as Partial<ToolState>;
-    // Sequence may be legacy/foreign data: sanitize rather than reject.
-    const sequence = typeof v.sequence === 'string' ? sanitizeSequence(v.sequence) : '';
-    const toneDuration =
-      typeof v.toneDuration === 'number' && Number.isFinite(v.toneDuration)
-        ? clampToneDuration(v.toneDuration)
-        : DEFAULT_TONE_DURATION;
-    const pauseDuration =
-      typeof v.pauseDuration === 'number' && Number.isFinite(v.pauseDuration)
-        ? clampPauseDuration(v.pauseDuration)
-        : DEFAULT_PAUSE_DURATION;
-    return { success: true, data: { sequence, toneDuration, pauseDuration } };
+    if (typeof v.input !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid data format: expected { input: string, multiLine?: boolean, history?: string[] }',
+      };
+    }
+    const multiLine = typeof v.multiLine === 'boolean' ? v.multiLine : DEFAULT_STATE.multiLine;
+    const history = Array.isArray(v.history)
+      ? v.history
+          .filter((h): h is string => typeof h === 'string')
+          .slice(0, MAX_HISTORY)
+      : [];
+    return {
+      success: true,
+      data: { input: v.input, multiLine, history },
+    };
   },
-  exporters: [
-    { format: 'png', loader: () => import('./exporters/png') },
-    { format: 'jpeg', loader: () => import('./exporters/jpeg') },
-    { format: 'webp', loader: () => import('./exporters/webp') },
-    { format: 'pdf', loader: () => import('./exporters/pdf') },
-  ],
 };
+
+export { caseConverterTool as baseConverterTool };

@@ -1,45 +1,58 @@
-/** A key on the telephone keypad (columns 1-4 include the A-D letters). */
-export type DtmfKey = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' | '*' | '#' | 'A' | 'B' | 'C' | 'D';
+export type CaseFormat =
+  | 'camel'
+  | 'pascal'
+  | 'snake'
+  | 'kebab'
+  | 'constant'
+  | 'title'
+  | 'dot'
+  | 'train'
+  | 'sentence';
+
+export interface CaseFormatDef {
+  id: CaseFormat;
+  label: string;
+}
+
+export const CASE_FORMATS: CaseFormatDef[] = [
+  { id: 'camel', label: 'camelCase' },
+  { id: 'pascal', label: 'PascalCase' },
+  { id: 'snake', label: 'snake_case' },
+  { id: 'kebab', label: 'kebab-case' },
+  { id: 'constant', label: 'CONSTANT_CASE' },
+  { id: 'title', label: 'Title Case' },
+  { id: 'dot', label: 'dot.case' },
+  { id: 'train', label: 'train-case' },
+  { id: 'sentence', label: 'Sentence case' },
+];
+
+/** Maximum stored entries in the input history for undo. */
+export const MAX_HISTORY = 50;
 
 export interface ToolState {
-  /** The current dial string: DTMF characters, optionally separated by spaces or dashes. */
-  sequence: string;
-  /** Duration of each tone in milliseconds (20-3000). */
-  toneDuration: number;
-  /** Pause between tones in milliseconds (0-2000). */
-  pauseDuration: number;
+  /** Raw multi-line input as typed by the user. */
+  input: string;
+  /** When true, each line is converted independently. */
+  multiLine: boolean;
+  /** Previous inputs (most recent first) for undoing the last conversion. */
+  history: string[];
 }
-
-export const DEFAULT_TONE_DURATION = 150;
-export const DEFAULT_PAUSE_DURATION = 60;
-export const MIN_TONE_DURATION = 20;
-export const MAX_TONE_DURATION = 3000;
-export const MIN_PAUSE_DURATION = 0;
-export const MAX_PAUSE_DURATION = 2000;
 
 export const DEFAULT_STATE: ToolState = {
-  sequence: '',
-  toneDuration: DEFAULT_TONE_DURATION,
-  pauseDuration: DEFAULT_PAUSE_DURATION,
+  input: 'parse HTML API response text',
+  multiLine: false,
+  history: [],
 };
 
-/** Reference-table row: a tone pair mapped to its digit/symbol plus labels. */
-export interface TonePairRow {
-  key: DtmfKey;
-  lowFrequency: number;
-  highFrequency: number;
-  /** Human row group (frequency band of the low tone). */
-  lowLabel: string;
-  /** Human column group (frequency band of the high tone). */
-  highLabel: string;
+export interface ConversionRow {
+  format: CaseFormat;
+  label: string;
+  /** Converted value for the current mode. */
+  value: string;
 }
 
-export interface ScheduledTone {
-  key: DtmfKey;
-  lowFrequency: number;
-  highFrequency: number;
-  /** Start offset in milliseconds from playback start. */
-  start: number;
-  /** Tone length in milliseconds. */
-  duration: number;
+export interface TextStats {
+  words: number;
+  chars: number;
+  lines: number;
 }

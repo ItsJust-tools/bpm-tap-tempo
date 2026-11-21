@@ -2,20 +2,13 @@ export { default as toolConfig } from './tool.config';
 export { templateBaseVersion } from './template-metadata';
 export { templateMetadata, getPublicSiteUrl } from './template-metadata';
 export {
-  dtmfTool,
-  DTMF_KEYS,
-  KEYPAD_MATRIX,
-  LOW_FREQUENCIES,
-  HIGH_FREQUENCIES,
-  TONE_PAIR_TABLE,
-  buildTonePairTable,
-  decodeTonePair,
-  isDtmfKey,
-  sanitizeSequence,
-  scheduleTones,
-  playbackDuration,
-  clampToneDuration,
-  clampPauseDuration,
+  caseConverterTool,
+  baseConverterTool,
+  tokenize,
+  tokensToCase,
+  convertAll,
+  computeStats,
+  pushHistory,
 } from './tool-definition';
 export { ToolCanvas } from './components/tool-canvas';
 export { ToolToolbar } from './components/tool-toolbar';
@@ -25,7 +18,9 @@ export { Sidebar } from './components/Sidebar';
 export { Toolbar } from './components/Toolbar';
 export type {
   ToolState,
-  DtmfKey,
-  ScheduledTone,
-  TonePairRow,
+  CaseFormat,
+  CaseFormatDef,
+  ConversionRow,
+  TextStats,
 } from './types';
+export { CASE_FORMATS, DEFAULT_STATE, MAX_HISTORY } from './types';

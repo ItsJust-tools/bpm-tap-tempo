@@ -3,34 +3,26 @@
 import { useCallback } from 'react';
 import { Canvas } from './Canvas';
 import { Toolbar } from './Toolbar';
-import type { DtmfKey, ToolState } from '../types';
+import type { ToolState } from '../types';
 
 interface ToolCanvasProps {
   state: ToolState;
+  fontSize: number;
   readOnly?: boolean;
   canvasRef?: React.RefObject<HTMLDivElement | null>;
   onStateChange?: (updater: (prev: ToolState) => ToolState) => void;
   onClear?: () => void;
-  activeKey?: DtmfKey | null;
-  isPlaying?: boolean;
-  onPlaySequence?: () => void;
-  onStopPlayback?: () => void;
-  onCopySequence?: () => void;
-  copyLabel?: string;
+  onUndo?: () => void;
 }
 
 export function ToolCanvas({
   state,
+  fontSize,
   readOnly = false,
   canvasRef,
   onStateChange,
   onClear,
-  activeKey,
-  isPlaying,
-  onPlaySequence,
-  onStopPlayback,
-  onCopySequence,
-  copyLabel,
+  onUndo,
 }: ToolCanvasProps) {
   const handleChange = useCallback(
     (next: ToolState) => {
@@ -42,20 +34,13 @@ export function ToolCanvas({
   return (
     <div
       ref={canvasRef}
-      className="dtmf-canvas"
+      className="converter-canvas"
       role="application"
-      aria-label="DTMF dial pad canvas"
+      aria-label="Case converter canvas"
+      style={{ fontSize: `${fontSize}px` }}
     >
-      <Canvas
-        state={state}
-        onChange={handleChange}
-        activeKey={activeKey}
-        isPlaying={isPlaying}
-        onPlaySequence={onPlaySequence}
-        onStopPlayback={onStopPlayback}
-        onCopySequence={onCopySequence}
-        copyLabel={copyLabel}
-      />
+      {onClear ? <Toolbar state={state} onChange={handleChange} onClear={onClear} /> : null}
+      <Canvas state={state} onChange={handleChange} onUndo={onUndo} />
       {readOnly ? null : null}
     </div>
   );

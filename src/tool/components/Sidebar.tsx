@@ -1,54 +1,71 @@
 'use client';
 
 import React from 'react';
-import { playbackDuration, scheduleTones, sanitizeSequence } from '../tool-definition';
+import { computeStats, convertAll } from '../tool-definition';
 import type { ToolState } from '../types';
 
 interface SidebarProps {
-  state?: ToolState;
+  state: ToolState;
+  onChange?: (state: ToolState) => void;
+  fontSize?: number;
+  onFontSizeChange?: (delta: number) => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ state }) => {
-  const sequence = state?.sequence ?? '';
-  const keys = sanitizeSequence(sequence);
-  const tones = scheduleTones(sequence, state?.toneDuration ?? 150, state?.pauseDuration ?? 60);
+export const Sidebar: React.FC<SidebarProps> = ({ state, fontSize, onFontSizeChange }) => {
+  const stats = computeStats(state.input);
+  const rows = convertAll(state);
 
   return (
-    <div className="dtmf-sidebar p-4 space-y-4 text-sm">
+    <div className="converter-sidebar p-3 text-sm space-y-4" data-testid="case-sidebar">
       <div className="sidebar-section">
-        <h3>Sequence stats</h3>
-        <dl className="stats-list">
-          <div className="stat-row">
-            <dt>Keys</dt>
-            <dd>{keys.length}</dd>
+        <h3>Stats</h3>
+        <dl className="stats-list text-xs">
+          <div className="stat-row flex justify-between">
+            <dt>Words</dt>
+            <dd>{stats.words.toLocaleString()}</dd>
           </div>
-          <div className="stat-row">
-            <dt>Total playback</dt>
-            <dd>{(playbackDuration(tones) / 1000).toFixed(2)} s</dd>
+          <div className="stat-row flex justify-between">
+            <dt>Characters</dt>
+            <dd>{stats.chars.toLocaleString()}</dd>
           </div>
-          <div className="stat-row">
-            <dt>Tone duration</dt>
-            <dd>{state?.toneDuration ?? 150} ms</dd>
+          <div className="stat-row flex justify-between">
+            <dt>Lines</dt>
+            <dd>{stats.lines.toLocaleString()}</dd>
           </div>
-          <div className="stat-row">
-            <dt>Pause</dt>
-            <dd>{state?.pauseDuration ?? 60} ms</dd>
+          <div className="stat-row flex justify-between">
+            <dt>Font size</dt>
+            <dd>
+              <button
+                type="button"
+                aria-label="Decrease font size"
+                onClick={() => onFontSizeChange?.(-2)}
+                className="mr-2 rounded border border-gray-300 px-2 text-xs dark:border-gray-700"
+              >
+                A-
+              </button>
+              <span className="font-mono text-xs">{fontSize ?? 16}px</span>
+              <button
+                type="button"
+                aria-label="Increase font size"
+                onClick={() => onFontSizeChange?.(2)}
+                className="ml-2 rounded border border-gray-300 px-2 text-xs dark:border-gray-700"
+              >
+                A+
+              </button>
+            </dd>
           </div>
         </dl>
       </div>
       <div className="sidebar-section">
-        <h3>Active tones</h3>
-        {tones.length === 0 ? (
-          <p className="text-xs text-gray-500 dark:text-gray-400">No keys dialed yet.</p>
-        ) : (
-          <ul className="font-mono text-xs" data-testid="dtmf-sidebar-tones">
-            {tones.map((tone, index) => (
-              <li key={`${tone.key}-${index}`}>
-                {tone.key}: {tone.lowFrequency}+{tone.highFrequency} Hz @ {tone.start} ms
-              </li>
-            ))}
-          </ul>
-        )}
+        <h3>Conversions</h3>
+        <ul className="text-xs space-y-1">
+          {rows.map((row) => (
+            <li key={row.format} className="truncate">
+              <span className="text-gray-500 dark:text-gray-400">{row.label}:</span>{' '}
+              <code>{row.value || '—'}</code>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

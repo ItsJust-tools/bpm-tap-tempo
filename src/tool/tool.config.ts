@@ -2,9 +2,9 @@ import type { ToolConfig } from '@itsjust/core';
 
 const toolConfig: ToolConfig = {
   id: '1795244675',
-  name: 'Dial Pad DTMF Decoder & Tone Player',
+  name: 'Case Converter Pro',
   description:
-    'A phone keypad tool that plays or decodes DTMF tone sequences and shows the digits each tone pair represents.',
+    'A text case conversion toolbox with camelCase, snake_case, PascalCase, kebab-case, CONSTANT_CASE, Title Case, dot.case, train-case and sentence case conversions plus live word/char counts and copy-to-clipboard.',
   version: '1.0.0',
   exportFormats: ['json', 'png', 'jpeg', 'webp', 'pdf'] as ToolConfig['exportFormats'],
   features: {

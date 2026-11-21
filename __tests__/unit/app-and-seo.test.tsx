@@ -12,13 +12,11 @@ import { cn } from '@/lib/utils';
 import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
-import { dtmfTool } from '@/tool/tool-definition';
-import { TONE_PAIR_TABLE } from '@/tool/tool-definition';
+import { baseConverterTool } from '@/tool/tool-definition';
 import { ToolCanvas } from '@/tool/components/tool-canvas';
 import { ToolSidebar } from '@/tool/components/tool-sidebar';
 import { ToolToolbar } from '@/tool/components/tool-toolbar';
 import { DEFAULT_STATE } from '@/tool/types';
-import type { ExporterLoader } from '@itsjust/core';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
@@ -94,45 +92,39 @@ describe('app and seo', () => {
   it('covers tool definition and helper exports', async () => {
     expect(cn('a', undefined, 'b', false, null, 'c')).toBe('a b c');
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
-    expect(dtmfTool.deserialize({ sequence: '12', toneDuration: 150, pauseDuration: 60 })).toEqual({
+    expect(baseConverterTool.deserialize({ input: 'ff' })).toEqual({
       success: true,
       data: {
-        sequence: '12',
-        toneDuration: 150,
-        pauseDuration: 60,
+        input: 'ff',
+        multiLine: false,
+        history: [],
       },
     });
-    expect(dtmfTool.deserialize({ nope: true })).toEqual({
-      success: true,
-      data: { sequence: '', toneDuration: 150, pauseDuration: 60 },
+    expect(baseConverterTool.deserialize({ nope: true })).toEqual({
+      success: false,
+      error: 'Invalid data format: expected { input: string, multiLine?: boolean, history?: string[] }',
     });
-    expect(dtmfTool.serialize({ ...DEFAULT_STATE, sequence: '11' })).toContain('"sequence":"11"');
-    expect(dtmfTool.deserialize({ sequence: '9x9', toneDuration: 99999, pauseDuration: -5 })).toEqual({
+    expect(baseConverterTool.serialize({ ...DEFAULT_STATE, input: '11' })).toContain('"input":"11"');
+    expect(baseConverterTool.deserialize({ input: '11', multiLine: true, history: ['a'] })).toEqual({
       success: true,
-      data: { sequence: '99', toneDuration: 3000, pauseDuration: 0 },
+      data: { input: '11', multiLine: true, history: ['a'] },
     });
-    const exporters = (dtmfTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
-    expect(exporters).toHaveLength(4);
-    const first = exporters[0];
-    expect(first).toBeDefined();
-    if (!first) throw new Error('missing exporter');
-    const png = await (first.loader as ExporterLoader)();
-    const resolved = 'default' in png ? png.default : png.exporter;
-    expect(resolved.format).toBe('png');
+    expect(baseConverterTool.id).toBe(toolConfig.id);
+    expect(baseConverterTool.name).toBe(toolConfig.name);
   });
 
   it('renders tool components', () => {
     render(
       <>
         <ToolToolbar />
-        <ToolSidebar state={{ ...DEFAULT_STATE, sequence: '12' }} />
-        <ToolCanvas state={{ ...DEFAULT_STATE, sequence: '12' }} />
+        <ToolSidebar state={{ ...DEFAULT_STATE, input: 'ff' }} fontSize={16} onFontSizeChange={() => {}} />
+        <ToolCanvas state={{ ...DEFAULT_STATE, input: 'ff' }} fontSize={16} />
       </>
     );
 
     expect(screen.getByRole('link', { name: 'Open help page' })).toBeInTheDocument();
-    expect(screen.getByRole('application', { name: 'DTMF dial pad canvas' })).toBeInTheDocument();
-    expect(screen.getByTestId('dtmf-key-5')).toBeInTheDocument();
-    expect(screen.getByTestId('dtmf-row-1')).toHaveTextContent('697');
+    expect(screen.getByText('Characters')).toBeInTheDocument();
+    expect(screen.getByRole('application', { name: 'Case converter canvas' })).toBeInTheDocument();
+    expect(screen.getByTestId('case-row-snake')).toHaveTextContent('ff');
   });
 });
