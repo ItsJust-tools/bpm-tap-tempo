@@ -1,12 +1,11 @@
-import type { ExportFormat } from '@itsjust/core';
+import type { ToolConfig } from '@itsjust/core';
 
-export const toolConfig = {
-  id: "tool-1795251874",
-  name: "Markdown to HTML Converter",
-  category: "Converter",
-  description: "Convert Markdown into clean, styled HTML with live preview and export options, fully client-side.",
+export const toolConfig: ToolConfig = {
+  id: "1795259106",
+  name: "Stopwatch & Lap Timer",
+  description: "A browser-based stopwatch with lap recording, per-lap split deltas, keyboard shortcuts, and shareable state via URL.",
   version: "1.0.0",
-  exportFormats: ["png", "jpeg", "webp", "pdf", "json"] satisfies ExportFormat[] as ExportFormat[],
+  exportFormats: ["png", "jpeg", "webp", "pdf"],
   features: {
     export: true,
     autoSave: true,
@@ -16,16 +15,21 @@ export const toolConfig = {
     darkMode: true,
   },
   theme: {
-    brand: "Markdown to HTML Converter",
+    accent: "#0ea5e9",
+    accentHover: "#0284c7",
+    accentSubtle: "rgba(14, 165, 233, 0.12)",
+    brand: "Stopwatch & Lap Timer",
+    icon: "⏱️",
   },
-  featureList: [
-    "Live two-pane editor with instant Markdown->HTML rendering",
-    "GitHub-flavored Markdown support: tables, task lists, strikethrough, autolinks",
-    "Code blocks with language tags and syntax-highlight-ready output",
-    "Options for hard line breaks, heading IDs, and sanitization",
-    "Copy HTML, download .html file, or copy standalone styled document",
-    "Table of contents extraction with anchor link insertion",
-    "Document statistics: words, characters, headings, links, images, code blocks",
+  shortcuts: [
+    {
+      title: "Timer",
+      shortcuts: [
+        { keys: "Space", label: "Start / Pause", description: "Toggle the timer between running and paused" },
+        { keys: "L", label: "Record lap", description: "Record a lap with the current elapsed time" },
+        { keys: "R", label: "Reset", description: "Reset the timer and clear all laps" },
+      ],
+    },
   ],
 };
 

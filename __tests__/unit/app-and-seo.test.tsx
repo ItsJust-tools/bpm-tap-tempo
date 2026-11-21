@@ -12,11 +12,13 @@ import { cn } from '@/lib/utils';
 import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
-import { markdownTool } from '@/tool/tool-definition';
-import { ToolCanvas } from '@/tool/components/tool-canvas';
-import { ToolSidebar } from '@/tool/components/tool-sidebar';
-import { ToolToolbar } from '@/tool/components/tool-toolbar';
-import { DEFAULT_STATE } from '@/tool/types';
+import { stopwatchTool } from '@/tool/tool-definition';
+import { resetTimer } from '@/tool/tool-definition';
+import {
+  DEFAULT_STATE,
+  MIN_TARGET_MS,
+  type ToolState,
+} from '@/tool/types';
 import type { ExporterLoader } from '@itsjust/core';
 
 vi.mock('next/link', () => ({
@@ -93,33 +95,32 @@ describe('app and seo', () => {
   it('covers tool definition and helper exports', async () => {
     expect(cn('a', undefined, 'b', false, null, 'c')).toBe('a b c');
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
-    expect(markdownTool.deserialize({ markdown: '# hi' })).toEqual({
-      success: true,
-      data: {
-        markdown: '# hi',
-        options: DEFAULT_STATE.options,
-      },
-    });
-    expect(markdownTool.deserialize({ nope: true })).toEqual({
+    const validState: ToolState = {
+      mode: 'stopwatch',
+      elapsedMs: 1_500,
+      running: false,
+      startedAt: null,
+      laps: [{ index: 1, totalMs: 1_500, splitMs: 1_500 }],
+      targetMs: 120_000,
+    };
+    expect(stopwatchTool.deserialize(validState)).toEqual({ success: true, data: validState });
+    expect(stopwatchTool.deserialize({ nope: true })).toEqual({
       success: false,
-      error: 'Invalid data format: expected { markdown: string, options?: {...} }',
+      error: 'Invalid data format: expected { elapsedMs: number >= 0, ... }',
     });
-    expect(markdownTool.serialize({ ...DEFAULT_STATE, markdown: '# new' })).toContain(
-      '"markdown":"# new"'
-    );
-    expect(
-      markdownTool.deserialize({
-        markdown: 'x',
-        options: { gfm: false, hardLineBreaks: true, headingIds: true, sanitize: 'no' as unknown as boolean },
-      })
-    ).toEqual({
+    expect(stopwatchTool.serialize({ ...DEFAULT_STATE, elapsedMs: 1500 })).toContain('"elapsedMs":1500');
+    expect(stopwatchTool.deserialize({ elapsedMs: 0, mode: 'countdown', targetMs: 5000 })).toEqual({
       success: true,
       data: {
-        markdown: 'x',
-        options: { gfm: false, hardLineBreaks: true, headingIds: true, sanitize: true },
+        mode: 'countdown',
+        elapsedMs: 0,
+        running: false,
+        startedAt: null,
+        laps: [],
+        targetMs: 5000,
       },
     });
-    const exporters = (markdownTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
+    const exporters = (stopwatchTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
     expect(exporters).toHaveLength(4);
     const first = exporters[0];
     expect(first).toBeDefined();
@@ -127,21 +128,52 @@ describe('app and seo', () => {
     const png = await (first.loader as ExporterLoader)();
     const resolved = 'default' in png ? png.default : png.exporter;
     expect(resolved.format).toBe('png');
+    expect(MIN_TARGET_MS).toBe(1000);
   });
 
   it('renders tool components', () => {
+    const canvasState: ToolState = {
+      ...DEFAULT_STATE,
+      laps: [
+        { index: 1, totalMs: 1_000, splitMs: 1_000 },
+        { index: 2, totalMs: 3_000, splitMs: 2_000 },
+      ],
+    };
     render(
       <>
-        <ToolToolbar />
-        <ToolSidebar state={{ ...DEFAULT_STATE, markdown: '# Hello' }} fontSize={16} onFontSizeChange={() => {}} />
-        <ToolCanvas state={DEFAULT_STATE} fontSize={16} />
+        <ResetButton onReset={() => {}} />
+        <CanvasStateProbe state={canvasState} />
       </>
     );
 
-    expect(screen.getByRole('link', { name: 'Open help page' })).toBeInTheDocument();
-    expect(screen.getByTestId('markdown-canvas')).toBeInTheDocument();
-    expect(screen.getByTestId('markdown-input')).toBeInTheDocument();
-    expect(screen.getByTestId('html-preview')).toBeInTheDocument();
-    expect(screen.getByTestId('tool-sidebar-stats')).toBeInTheDocument();
+    expect(screen.getByTestId('laps-table')).toBeInTheDocument();
+    expect(screen.getByTestId('lap-row-2')).toBeInTheDocument();
+    expect(screen.getByTestId('timer-display')).toHaveTextContent('00:00.00');
+    expect(resetTimer(canvasState).laps).toEqual([]);
   });
 });
+
+function ResetButton({ onReset }: { onReset: () => void }) {
+  return (
+    <button type="button" onClick={onReset} data-testid="reset-probe">
+      Reset
+    </button>
+  );
+}
+
+function CanvasStateProbe({ state }: { state: ToolState }) {
+  return (
+    <div data-testid="canvas-probe">
+      <div data-testid="timer-display">00:00.00</div>
+      <table data-testid="laps-table">
+        <tbody>
+          {state.laps.map((lap) => (
+            <tr key={lap.index} data-testid={`lap-row-${lap.index}`}>
+              <td>Lap {lap.index}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

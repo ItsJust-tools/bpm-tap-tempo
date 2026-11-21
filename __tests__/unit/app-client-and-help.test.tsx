@@ -39,8 +39,12 @@ vi.mock('@itsjust/core', () => ({
   useTool: () => ({
     state: {
       data: {
-        markdown: 'Hello',
-        options: { gfm: true, hardLineBreaks: false, headingIds: true, sanitize: true },
+        mode: 'stopwatch',
+        elapsedMs: 1234,
+        running: false,
+        startedAt: null,
+        laps: [{ index: 1, totalMs: 1234, splitMs: 1234 }],
+        targetMs: 300000,
       },
       setData: mockSetData,
       isDirty: false,
@@ -57,23 +61,25 @@ vi.mock('@itsjust/core', () => ({
 
 vi.mock('@/tool', () => ({
   toolConfig: {
-    id: 'tool-1795251874',
-    name: 'Markdown to HTML Converter',
+    id: '1795259106',
+    name: 'Stopwatch & Lap Timer',
     version: '1.0.0',
     features: { sidebar: true },
-    theme: { brand: 'Markdown to HTML Converter' },
+    theme: { brand: 'Stopwatch & Lap Timer' },
   },
-  templateBaseVersion: '1.1.0',
-  ToolCanvas: ({ state }: { state: { markdown: string } }) => <div>canvas:{state.markdown}</div>,
+  templateBaseVersion: '1.4.0',
+  currentElapsedMs: (state: { elapsedMs: number }) => state.elapsedMs,
+  ToolCanvas: ({ state }: { state: { elapsedMs: number } }) => <div>canvas:{state.elapsedMs}</div>,
   ToolToolbar: () => <div>toolbar</div>,
-  ToolSidebar: ({ state }: { state: { markdown: string } }) => <div>sidebar:{state.markdown}</div>,
+  ToolSidebar: ({ state }: { state: { laps: unknown[] } }) => <div>sidebar:{state.laps.length}</div>,
 }));
 
 vi.mock('@/tool/tool-definition', () => ({
-  markdownTool: {
+  stopwatchTool: {
     serialize: (state: unknown) => JSON.stringify(state),
-    deserialize: () => ({ success: true, data: { markdown: 'From Shared Url' } }),
+    deserialize: () => ({ success: true, data: { mode: 'stopwatch', elapsedMs: 0, running: false, startedAt: null, laps: [], targetMs: 300000 } }),
   },
+  resetTimer: (state: unknown) => state,
 }));
 
 describe('app client and help page', () => {

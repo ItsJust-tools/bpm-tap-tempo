@@ -17,14 +17,11 @@ import {
   ToolCanvas,
   ToolToolbar,
   ToolSidebar,
+  currentElapsedMs,
 } from '@/tool';
-import { markdownTool as markdownToolDef } from '@/tool/tool-definition';
+import { stopwatchTool } from '@/tool/tool-definition';
+import { resetTimer } from '@/tool/tool-definition';
 import type { ToolState } from '@/tool/types';
-import { DEFAULT_STATE } from '@/tool/types';
-
-const DEFAULT_FONT_SIZE = 16;
-const MIN_FONT_SIZE = 8;
-const MAX_FONT_SIZE = 72;
 
 export default function ToolClient() {
   const ToolShellCompat = ToolShell as unknown as ComponentType<Record<string, unknown>> & {
@@ -35,7 +32,7 @@ export default function ToolClient() {
     StatusBar?: ComponentType<{ children?: ReactNode }>;
   };
   const canvasRef = useRef<HTMLDivElement>(null);
-  const tool = useTool<ToolState>(markdownToolDef, canvasRef);
+  const tool = useTool<ToolState>(stopwatchTool, canvasRef);
   const setToolData = tool.state.setData;
   const showToast = tool.toast;
   const [isSharing, setIsSharing] = useState(false);
@@ -43,14 +40,23 @@ export default function ToolClient() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(
     () => typeof window !== 'undefined' && window.innerWidth > 768 && toolConfig.features.sidebar
   );
-  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
 
   const title = toolConfig.name;
   const state = tool.state.data;
 
+  // Live tab-title timer while running.
   useEffect(() => {
-    document.title = title;
-  }, [title]);
+    if (!state.running) {
+      document.title = title;
+      return;
+    }
+    const update = () => {
+      document.title = `${formatClock(currentElapsedMs(state))} — ${title}`;
+    };
+    update();
+    const id = window.setInterval(update, 500);
+    return () => window.clearInterval(id);
+  }, [state, title]);
 
   const handleStateChange = useCallback(
     (updater: (prev: ToolState) => ToolState) => {
@@ -58,10 +64,6 @@ export default function ToolClient() {
     },
     [setToolData]
   );
-
-  const handleFontSizeChange = useCallback((delta: number) => {
-    setFontSize((prev) => Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, prev + delta)));
-  }, []);
 
   useEffect(() => {
     if (hasLoadedSharedState.current) return;
@@ -73,7 +75,7 @@ export default function ToolClient() {
       const serialized = decompressFromEncodedURIComponent(encodedState);
       if (!serialized) throw new Error('Invalid shared URL');
       const parsed: unknown = JSON.parse(serialized);
-      const deserialized = markdownToolDef.deserialize(parsed);
+      const deserialized = stopwatchTool.deserialize(parsed);
       if (!deserialized.success) throw new Error(deserialized.error);
       setToolData(deserialized.data);
       showToast('Loaded state from shared URL', 'success');
@@ -86,7 +88,7 @@ export default function ToolClient() {
   const handleShare = useCallback(async () => {
     setIsSharing(true);
     try {
-      const serialized = markdownToolDef.serialize(state);
+      const serialized = stopwatchTool.serialize(state);
       const encodedState = compressToEncodedURIComponent(serialized);
       if (!encodedState) throw new Error('Failed to encode state for URL');
       const url = new URL(window.location.href);
@@ -114,8 +116,8 @@ export default function ToolClient() {
     }
   }, [showToast, state, title]);
 
-  const handleClear = useCallback(() => {
-    setToolData(() => ({ ...DEFAULT_STATE, markdown: '' }));
+  const handleReset = useCallback(() => {
+    setToolData((prev) => resetTimer(prev));
   }, [setToolData]);
 
   const toolbarContent = (
@@ -133,16 +135,15 @@ export default function ToolClient() {
   );
 
   const sidebarContent = (
-    <ToolSidebar state={state} fontSize={fontSize} onFontSizeChange={handleFontSizeChange} />
+    <ToolSidebar state={state} onStateChange={handleStateChange} />
   );
 
   const canvasContent = (
     <ToolCanvas
-      canvasRef={canvasRef}
       state={state}
-      fontSize={fontSize}
+      canvasRef={canvasRef}
       onStateChange={handleStateChange}
-      onClear={handleClear}
+      onClear={handleReset}
     />
   );
 
@@ -162,8 +163,8 @@ export default function ToolClient() {
           'Ready'
         )}
       </span>
-      <span className="status-slot status-slot-font-size">{fontSize}px</span>
-      <span className="status-slot">Markdown: {state.markdown.length} chars</span>
+      <span className="status-slot status-slot-laps">{state.laps.length} laps</span>
+      <span className="status-slot status-slot-mode">Mode: {state.mode}</span>
       <span className="status-slot status-slot-tool-version">Tool v{toolConfig.version}</span>
       <span className="status-slot status-slot-template-version">
         Template v{templateBaseVersion}
@@ -219,4 +220,13 @@ export default function ToolClient() {
         : null}
     </ToolShellCompat>
   );
+}
+
+function formatClock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const seconds = total % 60;
+  const minutes = Math.floor(total / 60000) % 60;
+  const hours = Math.floor(total / 3600000);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return hours > 0 ? `${two(hours)}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
 }
