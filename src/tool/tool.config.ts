@@ -1,36 +1,38 @@
 import type { ToolConfig } from '@itsjust/core';
 
-export const toolConfig: ToolConfig = {
-  id: "1795259106",
-  name: "Stopwatch & Lap Timer",
-  description: "A browser-based stopwatch with lap recording, per-lap split deltas, keyboard shortcuts, and shareable state via URL.",
-  version: "1.0.0",
-  exportFormats: ["png", "jpeg", "webp", "pdf"],
+const toolConfig = {
+  id: '1795266287',
+  name: 'BPM Tap Tempo',
+  description:
+    'Tap in rhythm to compute tempo in BPM, with a sliding tap window, beat timing statistics, preset tempo grid, audio click feedback, clipboard copy and shareable state.',
+  version: '1.0.0',
+  exportFormats: ['png', 'jpeg', 'webp', 'pdf'],
   features: {
     export: true,
     autoSave: true,
-    undoRedo: true,
+    undoRedo: false,
     sidebar: true,
     statusBar: true,
     darkMode: true,
   },
   theme: {
-    accent: "#0ea5e9",
-    accentHover: "#0284c7",
-    accentSubtle: "rgba(14, 165, 233, 0.12)",
-    brand: "Stopwatch & Lap Timer",
-    icon: "⏱️",
+    accent: '#f59e0b',
+    accentHover: '#d97706',
+    accentSubtle: 'rgba(245, 158, 11, 0.12)',
+    brand: 'BPM Tap Tempo',
+    icon: '🥁',
   },
   shortcuts: [
     {
-      title: "Timer",
+      title: 'Tap Tempo',
       shortcuts: [
-        { keys: "Space", label: "Start / Pause", description: "Toggle the timer between running and paused" },
-        { keys: "L", label: "Record lap", description: "Record a lap with the current elapsed time" },
-        { keys: "R", label: "Reset", description: "Reset the timer and clear all laps" },
+        { keys: 'Space / T', label: 'Tap', description: 'register a beat tap' },
+        { keys: 'R', label: 'Reset', description: 'clear the tap sequence' },
+        { keys: 'C', label: 'Copy BPM', description: 'copy the computed BPM to the clipboard' },
+        { keys: 'K', label: 'Click', description: 'toggle audio click feedback' },
       ],
     },
   ],
-};
+} satisfies ToolConfig;
 
 export default toolConfig;

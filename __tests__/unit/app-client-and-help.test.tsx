@@ -20,7 +20,7 @@ const mockSetData = vi.fn();
 const mockToast = vi.fn();
 const mockHandleExport = vi.fn();
 const mockImport = vi.fn();
-const mockToolbarActions = { canUndo: true, canRedo: true, onUndo: vi.fn(), onRedo: vi.fn() };
+const mockToolbarActions: unknown[] = [];
 
 vi.mock('@itsjust/core', () => ({
   ToolShell: ({ toolbar, sidebar, canvas, statusBar }: Record<string, unknown>) => (
@@ -39,12 +39,9 @@ vi.mock('@itsjust/core', () => ({
   useTool: () => ({
     state: {
       data: {
-        mode: 'stopwatch',
-        elapsedMs: 1234,
-        running: false,
-        startedAt: null,
-        laps: [{ index: 1, totalMs: 1234, splitMs: 1234 }],
-        targetMs: 300000,
+        taps: [1_000, 1_500],
+        clickEnabled: true,
+        windowMs: 10_000,
       },
       setData: mockSetData,
       isDirty: false,
@@ -61,25 +58,25 @@ vi.mock('@itsjust/core', () => ({
 
 vi.mock('@/tool', () => ({
   toolConfig: {
-    id: '1795259106',
-    name: 'Stopwatch & Lap Timer',
+    id: '1795266287',
+    name: 'BPM Tap Tempo',
     version: '1.0.0',
     features: { sidebar: true },
-    theme: { brand: 'Stopwatch & Lap Timer' },
+    theme: { brand: 'BPM Tap Tempo' },
   },
   templateBaseVersion: '1.4.0',
-  currentElapsedMs: (state: { elapsedMs: number }) => state.elapsedMs,
-  ToolCanvas: ({ state }: { state: { elapsedMs: number } }) => <div>canvas:{state.elapsedMs}</div>,
+  computeBpmStats: () => ({ bpm: 120, intervalMs: 500, minIntervalMs: 500, maxIntervalMs: 500, bpmMin: 120, bpmMax: 120 }),
+  formatBpm: (bpm: number | null) => (bpm === null ? '—' : bpm.toFixed(1)),
+  ToolCanvas: ({ state }: { state: { taps: number[] } }) => <div>canvas:{state.taps.length}</div>,
   ToolToolbar: () => <div>toolbar</div>,
-  ToolSidebar: ({ state }: { state: { laps: unknown[] } }) => <div>sidebar:{state.laps.length}</div>,
+  ToolSidebar: ({ state }: { state: { taps: number[] } }) => <div>sidebar:{state.taps.length}</div>,
 }));
 
 vi.mock('@/tool/tool-definition', () => ({
-  stopwatchTool: {
+  bpmTapTempoTool: {
     serialize: (state: unknown) => JSON.stringify(state),
-    deserialize: () => ({ success: true, data: { mode: 'stopwatch', elapsedMs: 0, running: false, startedAt: null, laps: [], targetMs: 300000 } }),
+    deserialize: () => ({ success: true, data: { taps: [], clickEnabled: true, windowMs: 10_000 } }),
   },
-  resetTimer: (state: unknown) => state,
 }));
 
 describe('app client and help page', () => {

@@ -17,10 +17,10 @@ import {
   ToolCanvas,
   ToolToolbar,
   ToolSidebar,
-  currentElapsedMs,
+  computeBpmStats,
+  formatBpm,
 } from '@/tool';
-import { stopwatchTool } from '@/tool/tool-definition';
-import { resetTimer } from '@/tool/tool-definition';
+import { bpmTapTempoTool } from '@/tool/tool-definition';
 import type { ToolState } from '@/tool/types';
 
 export default function ToolClient() {
@@ -32,7 +32,7 @@ export default function ToolClient() {
     StatusBar?: ComponentType<{ children?: ReactNode }>;
   };
   const canvasRef = useRef<HTMLDivElement>(null);
-  const tool = useTool<ToolState>(stopwatchTool, canvasRef);
+  const tool = useTool<ToolState>(bpmTapTempoTool, canvasRef);
   const setToolData = tool.state.setData;
   const showToast = tool.toast;
   const [isSharing, setIsSharing] = useState(false);
@@ -43,20 +43,6 @@ export default function ToolClient() {
 
   const title = toolConfig.name;
   const state = tool.state.data;
-
-  // Live tab-title timer while running.
-  useEffect(() => {
-    if (!state.running) {
-      document.title = title;
-      return;
-    }
-    const update = () => {
-      document.title = `${formatClock(currentElapsedMs(state))} — ${title}`;
-    };
-    update();
-    const id = window.setInterval(update, 500);
-    return () => window.clearInterval(id);
-  }, [state, title]);
 
   const handleStateChange = useCallback(
     (updater: (prev: ToolState) => ToolState) => {
@@ -75,7 +61,7 @@ export default function ToolClient() {
       const serialized = decompressFromEncodedURIComponent(encodedState);
       if (!serialized) throw new Error('Invalid shared URL');
       const parsed: unknown = JSON.parse(serialized);
-      const deserialized = stopwatchTool.deserialize(parsed);
+      const deserialized = bpmTapTempoTool.deserialize(parsed);
       if (!deserialized.success) throw new Error(deserialized.error);
       setToolData(deserialized.data);
       showToast('Loaded state from shared URL', 'success');
@@ -85,10 +71,25 @@ export default function ToolClient() {
     }
   }, [setToolData, showToast]);
 
+  const handleCopyBpm = useCallback(async () => {
+    const stats = computeBpmStats(state.taps);
+    if (stats.bpm === null) {
+      showToast('Tap at least twice before copying BPM', 'error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(formatBpm(stats.bpm));
+      showToast(`Copied ${formatBpm(stats.bpm)} BPM to clipboard`, 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to copy BPM';
+      showToast(message, 'error');
+    }
+  }, [showToast, state.taps]);
+
   const handleShare = useCallback(async () => {
     setIsSharing(true);
     try {
-      const serialized = stopwatchTool.serialize(state);
+      const serialized = bpmTapTempoTool.serialize(state);
       const encodedState = compressToEncodedURIComponent(serialized);
       if (!encodedState) throw new Error('Failed to encode state for URL');
       const url = new URL(window.location.href);
@@ -117,7 +118,7 @@ export default function ToolClient() {
   }, [showToast, state, title]);
 
   const handleReset = useCallback(() => {
-    setToolData((prev) => resetTimer(prev));
+    setToolData((prev) => ({ ...prev, taps: [] }));
   }, [setToolData]);
 
   const toolbarContent = (
@@ -147,6 +148,8 @@ export default function ToolClient() {
     />
   );
 
+  const stats = computeBpmStats(state.taps);
+
   const statusBarContent = (
     <>
       <span
@@ -163,8 +166,10 @@ export default function ToolClient() {
           'Ready'
         )}
       </span>
-      <span className="status-slot status-slot-laps">{state.laps.length} laps</span>
-      <span className="status-slot status-slot-mode">Mode: {state.mode}</span>
+      <span className="status-slot status-slot-bpm">
+        {stats.bpm === null ? 'No tempo' : `${formatBpm(stats.bpm)} BPM`}
+      </span>
+      <span className="status-slot status-slot-taps">{state.taps.length} taps</span>
       <span className="status-slot status-slot-tool-version">Tool v{toolConfig.version}</span>
       <span className="status-slot status-slot-template-version">
         Template v{templateBaseVersion}
@@ -183,7 +188,6 @@ export default function ToolClient() {
   return (
     <ToolShellCompat
       config={toolConfig}
-      actions={useMemo(() => tool.toolbarActions, [tool.toolbarActions])}
       sidebarOpen={sidebarOpen}
       onSidebarChange={setSidebarOpen}
       toolbar={toolbarContent}
@@ -220,13 +224,4 @@ export default function ToolClient() {
         : null}
     </ToolShellCompat>
   );
-}
-
-function formatClock(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const seconds = total % 60;
-  const minutes = Math.floor(total / 60000) % 60;
-  const hours = Math.floor(total / 3600000);
-  const two = (n: number) => String(n).padStart(2, '0');
-  return hours > 0 ? `${two(hours)}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
 }

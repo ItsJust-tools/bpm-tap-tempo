@@ -1,88 +1,143 @@
-export interface Lap {
-  /** Monotonic lap index, starting at 1 for the first recorded lap. */
-  index: number;
-  /** Total elapsed time in milliseconds when this lap was recorded. */
-  totalMs: number;
-  /** Time spent on this lap alone (delta from previous lap). */
-  splitMs: number;
-}
-
-export type TimerMode = 'stopwatch' | 'countdown';
-
 export interface ToolState {
-  /** Timer mode: free-running stopwatch or countdown to a target duration. */
-  mode: TimerMode;
-  /** Elapsed time in milliseconds accumulated before/while running. */
-  elapsedMs: number;
-  /** True while the timer is running (elapsedMs advancing). */
-  running: boolean;
-  /** Wall-clock timestamp (Date.now) of the last run segment start, or null when paused. */
-  startedAt: number | null;
-  /** Recorded laps, oldest first. */
-  laps: Lap[];
-  /** Configured countdown target duration in milliseconds (countdown mode). */
-  targetMs: number;
+  /** Wall-clock timestamps (Date.now, ms) of recent taps, oldest first. */
+  taps: number[];
+  /** Play an audio click on every tap (Web Audio API). */
+  clickEnabled: boolean;
+  /** Sliding window duration in ms; taps older than this are dropped. */
+  windowMs: number;
 }
 
-export const FASTEST_HIGHLIGHT = 'fastest';
-export const SLOWEST_HIGHLIGHT = 'slowest';
+export const DEFAULT_WINDOW_MS = 10_000;
+export const MIN_WINDOW_MS = 2_000;
+export const MAX_WINDOW_MS = 30_000;
+/** Reset tap sequence after this much inactivity since the last tap. */
+export const IDLE_TIMEOUT_MS = 2_000;
+/** Minimum interval accepted between two taps (ms); faster taps are ignored. */
+export const MIN_TAP_INTERVAL_MS = 50;
+/** Reference tempo presets highlighted in the BPM grid. */
+export const PRESET_BPM = [60, 90, 120, 150, 180];
 
 export const DEFAULT_STATE: ToolState = {
-  mode: 'stopwatch',
-  elapsedMs: 0,
-  running: false,
-  startedAt: null,
-  laps: [],
-  targetMs: 5 * 60 * 1000,
+  taps: [],
+  clickEnabled: true,
+  windowMs: DEFAULT_WINDOW_MS,
 };
 
-export const MIN_TARGET_MS = 1000;
-export const MAX_TARGET_MS = 24 * 60 * 60 * 1000;
-
-/** Highlight kind for a lap row, or null when the lap is neither fastest nor slowest. */
-export type LapHighlight = 'fastest' | 'slowest' | null;
-
-/** Format milliseconds as hh:mm:ss.cc (hours omitted when zero). */
-export function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) ms = 0;
-  const total = Math.floor(ms);
-  const centis = Math.floor((total % 1000) / 10);
-  const seconds = Math.floor(total / 1000) % 60;
-  const minutes = Math.floor(total / 60000) % 60;
-  const hours = Math.floor(total / 3600000);
-  const two = (n: number) => String(n).padStart(2, '0');
-  const core = `${two(minutes)}:${two(seconds)}.${two(centis)}`;
-  return hours > 0 ? `${two(hours)}:${core}` : core;
+/** Number of taps required before a BPM estimate is shown. */
+export function minTapsForBpm(): number {
+  return 2;
 }
 
-/** Current displayed elapsed time in ms, accounting for a running segment. */
-export function currentElapsedMs(state: ToolState): number {
-  if (state.startedAt === null) return state.elapsedMs;
-  return state.elapsedMs + Math.max(0, Date.now() - state.startedAt);
+/**
+ * Drop taps that fall outside the sliding window and clear the sequence when
+ * the idle timeout (since the last tap) has elapsed. Pure: pass `now` in tests.
+ */
+export function pruneTaps(state: ToolState, now: number): ToolState {
+  const taps = state.taps;
+  if (taps.length === 0) return state;
+  const last = taps[taps.length - 1] ?? 0;
+  if (now - last > IDLE_TIMEOUT_MS) {
+    return { ...state, taps: [] };
+  }
+  const cutoff = now - state.windowMs;
+  const kept = taps.filter((t) => t >= cutoff);
+  if (kept.length === taps.length) return state;
+  return { ...state, taps: kept };
 }
 
-/** Remaining time in countdown mode, clamped at 0. */
-export function remainingMs(state: ToolState): number {
-  if (state.mode !== 'countdown') return 0;
-  return Math.max(0, state.targetMs - currentElapsedMs(state));
+/** Register a tap at `now`. Ignores taps faster than the debounce floor. */
+export function registerTap(state: ToolState, now: number): ToolState {
+  const pruned = pruneTaps(state, now);
+  const last = pruned.taps.length > 0 ? (pruned.taps[pruned.taps.length - 1] ?? 0) : 0;
+  if (pruned.taps.length > 0 && now - last < MIN_TAP_INTERVAL_MS) {
+    return pruned;
+  }
+  return { ...pruned, taps: [...pruned.taps, now] };
 }
 
-/** Highlight flags for the laps list: fastest/slowest by split, only when 2+ laps. */
-export function lapHighlights(laps: Lap[]): LapHighlight[] {
-  return laps.map((lap, i) => {
-    if (laps.length < 2) return null;
-    const splits = laps.map((l) => l.splitMs);
-    const min = Math.min(...splits);
-    const max = Math.max(...splits);
-    if (lap.splitMs === min && lap.splitMs === max) {
-      return null;
+/** Manual reset clears the whole tap sequence. */
+export function resetTaps(state: ToolState): ToolState {
+  return { ...state, taps: [] };
+}
+
+/** Toggle audio click feedback. */
+export function setClickEnabled(state: ToolState, enabled: boolean): ToolState {
+  return { ...state, clickEnabled: enabled };
+}
+
+/** Set the sliding window duration, clamped to supported bounds. */
+export function setWindowMs(state: ToolState, windowMs: number): ToolState {
+  const clamped = Math.min(MAX_WINDOW_MS, Math.max(MIN_WINDOW_MS, Math.round(windowMs)));
+  return { ...state, windowMs: clamped };
+}
+
+export interface BpmStats {
+  /** Average BPM across intervals between consecutive kept taps; null with fewer than 2 taps. */
+  bpm: number | null;
+  /** Average interval in milliseconds; null with fewer than 2 taps. */
+  intervalMs: number | null;
+  /** Fastest interval (min) among recent taps in ms; null with fewer than 2 taps. */
+  minIntervalMs: number | null;
+  /** Slowest interval (max) among recent taps in ms; null with fewer than 2 taps. */
+  maxIntervalMs: number | null;
+  /** BPM implied by the fastest interval (upper confidence bound); null with fewer than 2 taps. */
+  bpmMax: number | null;
+  /** BPM implied by the slowest interval (lower confidence bound); null with fewer than 2 taps. */
+  bpmMin: number | null;
+}
+
+/** Compute BPM statistics from kept tap timestamps. */
+export function computeBpmStats(taps: number[]): BpmStats {
+  if (taps.length < 2) {
+    return { bpm: null, intervalMs: null, minIntervalMs: null, maxIntervalMs: null, bpmMin: null, bpmMax: null };
+  }
+  const intervals: number[] = [];
+  for (let i = 1; i < taps.length; i++) {
+    const prev = taps[i - 1];
+    const cur = taps[i];
+    if (prev !== undefined && cur !== undefined) {
+      intervals.push(Math.max(1, cur - prev));
     }
-    if (lap.splitMs === min) return FASTEST_HIGHLIGHT as LapHighlight;
-    if (lap.splitMs === max) {
-      // Only the first occurrence of the max is marked slowest.
-      const firstMax = laps.findIndex((l) => l.splitMs === max);
-      return i === firstMax ? (SLOWEST_HIGHLIGHT as LapHighlight) : null;
+  }
+  if (intervals.length === 0) {
+    return { bpm: null, intervalMs: null, minIntervalMs: null, maxIntervalMs: null, bpmMin: null, bpmMax: null };
+  }
+  const avg = intervals.reduce((sum, d) => sum + d, 0) / intervals.length;
+  const minIntervalMs = Math.min(...intervals);
+  const maxIntervalMs = Math.max(...intervals);
+  const bpm = 60_000 / avg;
+  return {
+    bpm,
+    intervalMs: avg,
+    minIntervalMs,
+    maxIntervalMs,
+    bpmMin: 60_000 / maxIntervalMs,
+    bpmMax: 60_000 / minIntervalMs,
+  };
+}
+
+/** BPM from a sequence of tap timestamps (convenience for tests/serialization). */
+export function computeBpm(taps: number[]): number | null {
+  return computeBpmStats(taps).bpm;
+}
+
+/** Round BPM to one decimal for display. */
+export function formatBpm(bpm: number | null): string {
+  if (bpm === null || !Number.isFinite(bpm)) return '—';
+  return (Math.round(bpm * 10) / 10).toFixed(1);
+}
+
+/** Nearest preset BPM value, or null when no BPM is available. */
+export function nearestPreset(bpm: number | null): number | null {
+  if (bpm === null || !Number.isFinite(bpm)) return null;
+  let best: number | null = null;
+  let bestDelta = Number.POSITIVE_INFINITY;
+  for (const preset of PRESET_BPM) {
+    const delta = Math.abs(preset - bpm);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = preset;
     }
-    return null;
-  });
+  }
+  return best;
 }

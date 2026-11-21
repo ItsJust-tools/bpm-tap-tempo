@@ -12,11 +12,10 @@ import { cn } from '@/lib/utils';
 import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
-import { stopwatchTool } from '@/tool/tool-definition';
-import { resetTimer } from '@/tool/tool-definition';
+import { bpmTapTempoTool } from '@/tool/tool-definition';
 import {
   DEFAULT_STATE,
-  MIN_TARGET_MS,
+  IDLE_TIMEOUT_MS,
   type ToolState,
 } from '@/tool/types';
 import type { ExporterLoader } from '@itsjust/core';
@@ -95,32 +94,20 @@ describe('app and seo', () => {
   it('covers tool definition and helper exports', async () => {
     expect(cn('a', undefined, 'b', false, null, 'c')).toBe('a b c');
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
-    const validState: ToolState = {
-      mode: 'stopwatch',
-      elapsedMs: 1_500,
-      running: false,
-      startedAt: null,
-      laps: [{ index: 1, totalMs: 1_500, splitMs: 1_500 }],
-      targetMs: 120_000,
-    };
-    expect(stopwatchTool.deserialize(validState)).toEqual({ success: true, data: validState });
-    expect(stopwatchTool.deserialize({ nope: true })).toEqual({
-      success: false,
-      error: 'Invalid data format: expected { elapsedMs: number >= 0, ... }',
-    });
-    expect(stopwatchTool.serialize({ ...DEFAULT_STATE, elapsedMs: 1500 })).toContain('"elapsedMs":1500');
-    expect(stopwatchTool.deserialize({ elapsedMs: 0, mode: 'countdown', targetMs: 5000 })).toEqual({
-      success: true,
-      data: {
-        mode: 'countdown',
-        elapsedMs: 0,
-        running: false,
-        startedAt: null,
-        laps: [],
-        targetMs: 5000,
-      },
-    });
-    const exporters = (stopwatchTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
+    expect(bpmTapTempoTool.id).toBe(toolConfig.id);
+    expect(bpmTapTempoTool.name).toBe(toolConfig.name);
+    const idleState: ToolState = { taps: [1, 2], clickEnabled: true, windowMs: DEFAULT_STATE.windowMs };
+    const serialized = JSON.parse(bpmTapTempoTool.serialize(idleState));
+    expect(serialized.taps).toEqual([1, 2]);
+    const bad = bpmTapTempoTool.deserialize({ nope: true });
+    expect(bad.success).toBe(false);
+    if (!bad.success) {
+      expect(bad.error).toContain('Invalid data format');
+    }
+    const round = bpmTapTempoTool.deserialize({ taps: [10, 610], clickEnabled: false, windowMs: 8_000 });
+    expect(round.success).toBe(true);
+    expect(round.success && round.data.windowMs).toBe(8_000);
+    const exporters = (bpmTapTempoTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
     expect(exporters).toHaveLength(4);
     const first = exporters[0];
     expect(first).toBeDefined();
@@ -128,34 +115,29 @@ describe('app and seo', () => {
     const png = await (first.loader as ExporterLoader)();
     const resolved = 'default' in png ? png.default : png.exporter;
     expect(resolved.format).toBe('png');
-    expect(MIN_TARGET_MS).toBe(1000);
+    expect(IDLE_TIMEOUT_MS).toBe(2_000);
   });
 
   it('renders tool components', () => {
-    const canvasState: ToolState = {
+    const tapState: ToolState = {
       ...DEFAULT_STATE,
-      laps: [
-        { index: 1, totalMs: 1_000, splitMs: 1_000 },
-        { index: 2, totalMs: 3_000, splitMs: 2_000 },
-      ],
+      taps: [1_000, 1_500, 2_000],
     };
     render(
       <>
-        <ResetButton onReset={() => {}} />
-        <CanvasStateProbe state={canvasState} />
+        <ResetProbe />
+        <CanvasStateProbe state={tapState} />
       </>
     );
 
-    expect(screen.getByTestId('laps-table')).toBeInTheDocument();
-    expect(screen.getByTestId('lap-row-2')).toBeInTheDocument();
-    expect(screen.getByTestId('timer-display')).toHaveTextContent('00:00.00');
-    expect(resetTimer(canvasState).laps).toEqual([]);
+    expect(screen.getByTestId('bpm-display')).toBeInTheDocument();
+    expect(screen.getByTestId('preset-grid')).toBeInTheDocument();
   });
 });
 
-function ResetButton({ onReset }: { onReset: () => void }) {
+function ResetProbe() {
   return (
-    <button type="button" onClick={onReset} data-testid="reset-probe">
+    <button type="button" data-testid="reset-probe">
       Reset
     </button>
   );
@@ -164,16 +146,8 @@ function ResetButton({ onReset }: { onReset: () => void }) {
 function CanvasStateProbe({ state }: { state: ToolState }) {
   return (
     <div data-testid="canvas-probe">
-      <div data-testid="timer-display">00:00.00</div>
-      <table data-testid="laps-table">
-        <tbody>
-          {state.laps.map((lap) => (
-            <tr key={lap.index} data-testid={`lap-row-${lap.index}`}>
-              <td>Lap {lap.index}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div data-testid="bpm-display">120.0</div>
+      <div data-testid="preset-grid">{state.taps.length} taps</div>
     </div>
   );
 }
