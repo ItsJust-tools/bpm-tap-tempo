@@ -2,16 +2,20 @@ export { default as toolConfig } from './tool.config';
 export { templateBaseVersion } from './template-metadata';
 export { templateMetadata, getPublicSiteUrl } from './template-metadata';
 export {
-  baseConverterTool,
-  parseInBase,
-  parseIntegerInBase,
-  formatInBase,
-  toUnsignedBits,
-  toTwosComplement,
-  groupBits,
-  requiredBitLength,
-  convertToAllBases,
-  twosComplementInfo,
+  dtmfTool,
+  DTMF_KEYS,
+  KEYPAD_MATRIX,
+  LOW_FREQUENCIES,
+  HIGH_FREQUENCIES,
+  TONE_PAIR_TABLE,
+  buildTonePairTable,
+  decodeTonePair,
+  isDtmfKey,
+  sanitizeSequence,
+  scheduleTones,
+  playbackDuration,
+  clampToneDuration,
+  clampPauseDuration,
 } from './tool-definition';
 export { ToolCanvas } from './components/tool-canvas';
 export { ToolToolbar } from './components/tool-toolbar';
@@ -21,7 +25,7 @@ export { Sidebar } from './components/Sidebar';
 export { Toolbar } from './components/Toolbar';
 export type {
   ToolState,
-  DigitCase,
-  BitGrouping,
-  BaseConversion,
+  DtmfKey,
+  ScheduledTone,
+  TonePairRow,
 } from './types';

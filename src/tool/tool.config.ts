@@ -1,17 +1,12 @@
-import type { ToolConfig, ToolTheme } from '@itsjust/core';
+import type { ToolConfig } from '@itsjust/core';
 
-const toolTheme: ToolTheme = {
-  brand: 'Base Converter',
-  accent: '#10b981',
-};
-
-export const toolConfig: ToolConfig = {
-  id: '1795194271',
-  name: 'Base Converter',
+const toolConfig: ToolConfig = {
+  id: '1795244675',
+  name: 'Dial Pad DTMF Decoder & Tone Player',
   description:
-    'Convert numbers between binary, octal, decimal, hexadecimal and arbitrary bases 2-36 with live input and bit grouping.',
+    'A phone keypad tool that plays or decodes DTMF tone sequences and shows the digits each tone pair represents.',
   version: '1.0.0',
-  exportFormats: ['png', 'jpeg', 'webp', 'pdf'],
+  exportFormats: ['json', 'png', 'jpeg', 'webp', 'pdf'] as ToolConfig['exportFormats'],
   features: {
     export: true,
     autoSave: true,
@@ -20,7 +15,8 @@ export const toolConfig: ToolConfig = {
     statusBar: true,
     darkMode: true,
   },
-  theme: toolTheme,
 };
 
 export default toolConfig;
+
+export type ToolConfigType = typeof toolConfig;

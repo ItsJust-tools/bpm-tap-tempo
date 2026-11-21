@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils';
 import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
-import { baseConverterTool } from '@/tool/tool-definition';
+import { dtmfTool } from '@/tool/tool-definition';
+import { TONE_PAIR_TABLE } from '@/tool/tool-definition';
 import { ToolCanvas } from '@/tool/components/tool-canvas';
 import { ToolSidebar } from '@/tool/components/tool-sidebar';
 import { ToolToolbar } from '@/tool/components/tool-toolbar';
@@ -93,27 +94,24 @@ describe('app and seo', () => {
   it('covers tool definition and helper exports', async () => {
     expect(cn('a', undefined, 'b', false, null, 'c')).toBe('a b c');
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
-    expect(baseConverterTool.deserialize({ input: 'ff', inputBase: 16 })).toEqual({
+    expect(dtmfTool.deserialize({ sequence: '12', toneDuration: 150, pauseDuration: 60 })).toEqual({
       success: true,
       data: {
-        input: 'ff',
-        inputBase: 16,
-        digitCase: 'lower',
-        grouping: 'none',
-        showTwosComplement: true,
-        bitLength: DEFAULT_STATE.bitLength,
+        sequence: '12',
+        toneDuration: 150,
+        pauseDuration: 60,
       },
     });
-    expect(baseConverterTool.deserialize({ nope: true })).toEqual({
-      success: false,
-      error: 'Invalid data format: expected { input: string, inputBase: number (2-36), ... }',
-    });
-    expect(baseConverterTool.serialize({ ...DEFAULT_STATE, input: '11' })).toContain('"input":"11"');
-    expect(baseConverterTool.deserialize({ input: '11', inputBase: 10, digitCase: 'upper', grouping: 'byte', bitLength: 8 })).toEqual({
+    expect(dtmfTool.deserialize({ nope: true })).toEqual({
       success: true,
-      data: { input: '11', inputBase: 10, digitCase: 'upper', grouping: 'byte', showTwosComplement: true, bitLength: 8 },
+      data: { sequence: '', toneDuration: 150, pauseDuration: 60 },
     });
-    const exporters = (baseConverterTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
+    expect(dtmfTool.serialize({ ...DEFAULT_STATE, sequence: '11' })).toContain('"sequence":"11"');
+    expect(dtmfTool.deserialize({ sequence: '9x9', toneDuration: 99999, pauseDuration: -5 })).toEqual({
+      success: true,
+      data: { sequence: '99', toneDuration: 3000, pauseDuration: 0 },
+    });
+    const exporters = (dtmfTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
     expect(exporters).toHaveLength(4);
     const first = exporters[0];
     expect(first).toBeDefined();
@@ -127,14 +125,14 @@ describe('app and seo', () => {
     render(
       <>
         <ToolToolbar />
-        <ToolSidebar text="ff" fontSize={16} onFontSizeChange={() => {}} />
-        <ToolCanvas state={{ ...DEFAULT_STATE, input: '255' }} fontSize={16} />
+        <ToolSidebar state={{ ...DEFAULT_STATE, sequence: '12' }} />
+        <ToolCanvas state={{ ...DEFAULT_STATE, sequence: '12' }} />
       </>
     );
 
     expect(screen.getByRole('link', { name: 'Open help page' })).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument(); // digit count for "ff"
-    expect(screen.getByRole('application', { name: 'Base converter canvas' })).toBeInTheDocument();
-    expect(screen.getByTestId('base-row-16')).toHaveTextContent('ff');
+    expect(screen.getByRole('application', { name: 'DTMF dial pad canvas' })).toBeInTheDocument();
+    expect(screen.getByTestId('dtmf-key-5')).toBeInTheDocument();
+    expect(screen.getByTestId('dtmf-row-1')).toHaveTextContent('697');
   });
 });

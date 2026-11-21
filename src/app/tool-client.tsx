@@ -18,13 +18,17 @@ import {
   ToolToolbar,
   ToolSidebar,
 } from '@/tool';
-import { baseConverterTool as baseConverterToolDef } from '@/tool/tool-definition';
-import type { ToolState } from '@/tool/types';
+import { dtmfTool as dtmfToolDef } from '@/tool/tool-definition';
+import {
+  playbackDuration,
+  sanitizeSequence,
+  scheduleTones,
+  clampToneDuration,
+  clampPauseDuration,
+} from '@/tool/tool-definition';
+import { startDtmfPlayback, type DtmfPlaybackHandle } from '@/tool/playback';
+import type { DtmfKey, ToolState } from '@/tool/types';
 import { DEFAULT_STATE } from '@/tool/types';
-
-const DEFAULT_FONT_SIZE = 16;
-const MIN_FONT_SIZE = 8;
-const MAX_FONT_SIZE = 72;
 
 export default function ToolClient() {
   const ToolShellCompat = ToolShell as unknown as ComponentType<Record<string, unknown>> & {
@@ -35,7 +39,7 @@ export default function ToolClient() {
     StatusBar?: ComponentType<{ children?: ReactNode }>;
   };
   const canvasRef = useRef<HTMLDivElement>(null);
-  const tool = useTool<ToolState>(baseConverterToolDef, canvasRef);
+  const tool = useTool<ToolState>(dtmfToolDef, canvasRef);
   const setToolData = tool.state.setData;
   const showToast = tool.toast;
   const [isSharing, setIsSharing] = useState(false);
@@ -43,10 +47,15 @@ export default function ToolClient() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(
     () => typeof window !== 'undefined' && window.innerWidth > 768 && toolConfig.features.sidebar
   );
-  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
 
   const title = toolConfig.name;
   const state = tool.state.data;
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [activeKey, setActiveKey] = useState<DtmfKey | null>(null);
+  const [copyLabel, setCopyLabel] = useState('Copy');
+  const playbackRef = useRef<DtmfPlaybackHandle | null>(null);
+  const timeoutsRef = useRef<number[]>([]);
 
   useEffect(() => {
     document.title = title;
@@ -59,9 +68,81 @@ export default function ToolClient() {
     [setToolData]
   );
 
-  const handleFontSizeChange = useCallback((delta: number) => {
-    setFontSize((prev) => Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, prev + delta)));
+  const clearTimers = useCallback(() => {
+    for (const id of timeoutsRef.current) window.clearTimeout(id);
+    timeoutsRef.current = [];
   }, []);
+
+  const stopPlayback = useCallback(() => {
+    clearTimers();
+    playbackRef.current?.stop();
+    playbackRef.current = null;
+    setIsPlaying(false);
+    setActiveKey(null);
+  }, [clearTimers]);
+
+  const playSequence = useCallback(() => {
+    const tones = scheduleTones(state.sequence, state.toneDuration, state.pauseDuration);
+    if (tones.length === 0) return;
+    stopPlayback();
+    setIsPlaying(true);
+
+    const handle = startDtmfPlayback({ tones });
+    playbackRef.current = handle;
+    handle.onToneStart((tone) => setActiveKey(tone.key));
+
+    // Mirror the schedule for visual highlight timing in the UI.
+    tones.forEach((tone) => {
+      const id = window.setTimeout(() => {
+        setActiveKey(tone.key);
+        const off = window.setTimeout(() => setActiveKey(null), Math.max(0, tone.duration));
+        timeoutsRef.current.push(off);
+      }, Math.max(0, tone.start));
+      timeoutsRef.current.push(id);
+    });
+
+    const total = playbackDuration(tones);
+    const doneTimer = window.setTimeout(() => {
+      setIsPlaying(false);
+      setActiveKey(null);
+      playbackRef.current = null;
+    }, total + 20);
+    timeoutsRef.current.push(doneTimer);
+  }, [state.sequence, state.toneDuration, state.pauseDuration, stopPlayback]);
+
+  useEffect(() => {
+    return () => {
+      for (const id of timeoutsRef.current) window.clearTimeout(id);
+      playbackRef.current?.stop();
+    };
+  }, []);
+
+  const handleCopySequence = useCallback(async () => {
+    const dialString = sanitizeSequence(state.sequence);
+    try {
+      await navigator.clipboard.writeText(dialString);
+      setCopyLabel('Copied!');
+      window.setTimeout(() => setCopyLabel('Copy'), 1500);
+      showToast('Dial string copied', 'success');
+    } catch {
+      showToast('Clipboard unavailable', 'error');
+    }
+  }, [state.sequence, showToast]);
+
+  const handleSequenceChange = useCallback(
+    (updater: (prev: ToolState) => ToolState) => {
+      handleStateChange((prev) => {
+        const next = updater(prev);
+        // Normalize tone/pause durations so state stays valid from any UI path.
+        return {
+          ...next,
+          toneDuration: clampToneDuration(next.toneDuration),
+          pauseDuration: clampPauseDuration(next.pauseDuration),
+        };
+      });
+    },
+    [handleStateChange]
+  );
 
   useEffect(() => {
     if (hasLoadedSharedState.current) return;
@@ -73,7 +154,7 @@ export default function ToolClient() {
       const serialized = decompressFromEncodedURIComponent(encodedState);
       if (!serialized) throw new Error('Invalid shared URL');
       const parsed: unknown = JSON.parse(serialized);
-      const deserialized = baseConverterToolDef.deserialize(parsed);
+      const deserialized = dtmfToolDef.deserialize(parsed);
       if (!deserialized.success) throw new Error(deserialized.error);
       setToolData(deserialized.data);
       showToast('Loaded state from shared URL', 'success');
@@ -86,7 +167,7 @@ export default function ToolClient() {
   const handleShare = useCallback(async () => {
     setIsSharing(true);
     try {
-      const serialized = baseConverterToolDef.serialize(state);
+      const serialized = dtmfToolDef.serialize(state);
       const encodedState = compressToEncodedURIComponent(serialized);
       if (!encodedState) throw new Error('Failed to encode state for URL');
       const url = new URL(window.location.href);
@@ -115,8 +196,9 @@ export default function ToolClient() {
   }, [showToast, state, title]);
 
   const handleClear = useCallback(() => {
-    setToolData(() => ({ ...DEFAULT_STATE, input: '' }));
-  }, [setToolData]);
+    stopPlayback();
+    setToolData(() => ({ ...DEFAULT_STATE }));
+  }, [setToolData, stopPlayback]);
 
   const toolbarContent = (
     <>
@@ -132,19 +214,24 @@ export default function ToolClient() {
     </>
   );
 
-  const sidebarContent = (
-    <ToolSidebar text={state.input} fontSize={fontSize} onFontSizeChange={handleFontSizeChange} />
-  );
+  const sidebarContent = <ToolSidebar state={state} />;
 
   const canvasContent = (
     <ToolCanvas
       canvasRef={canvasRef}
       state={state}
-      fontSize={fontSize}
-      onStateChange={handleStateChange}
+      onStateChange={handleSequenceChange}
       onClear={handleClear}
+      activeKey={activeKey}
+      isPlaying={isPlaying}
+      onPlaySequence={playSequence}
+      onStopPlayback={stopPlayback}
+      onCopySequence={handleCopySequence}
+      copyLabel={copyLabel}
     />
   );
+
+  const keyCount = sanitizeSequence(state.sequence).length;
 
   const statusBarContent = (
     <>
@@ -162,8 +249,10 @@ export default function ToolClient() {
           'Ready'
         )}
       </span>
-      <span className="status-slot status-slot-font-size">{fontSize}px</span>
-      <span className="status-slot">Input base: {state.inputBase}</span>
+      <span className="status-slot">Keys: {keyCount}</span>
+      <span className="status-slot">
+        {state.toneDuration} ms tone / {state.pauseDuration} ms pause
+      </span>
       <span className="status-slot status-slot-tool-version">Tool v{toolConfig.version}</span>
       <span className="status-slot status-slot-template-version">
         Template v{templateBaseVersion}

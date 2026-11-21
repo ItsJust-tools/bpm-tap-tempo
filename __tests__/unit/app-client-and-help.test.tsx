@@ -38,7 +38,7 @@ vi.mock('@itsjust/core', () => ({
   ),
   useTool: () => ({
     state: {
-      data: { input: 'Hello', inputBase: 10, digitCase: 'lower', grouping: 'none', showTwosComplement: true, bitLength: 32 },
+      data: { sequence: '555', toneDuration: 150, pauseDuration: 60 },
       setData: mockSetData,
       isDirty: false,
       lastSaved: 'just now',
@@ -54,23 +54,28 @@ vi.mock('@itsjust/core', () => ({
 
 vi.mock('@/tool', () => ({
   toolConfig: {
-    id: '1795194271',
-    name: 'Base Converter',
+    id: '1795244675',
+    name: 'Dial Pad DTMF Decoder & Tone Player',
     version: '1.0.0',
     features: { sidebar: true },
     theme: { brand: 'Base Converter' },
   },
   templateBaseVersion: '1.1.0',
-  ToolCanvas: ({ state }: { state: { input: string } }) => <div>canvas:{state.input}</div>,
+  ToolCanvas: ({ state }: { state: { sequence: string } }) => <div>canvas:{state.sequence}</div>,
   ToolToolbar: () => <div>toolbar</div>,
-  ToolSidebar: ({ text }: { text: string }) => <div>sidebar:{text}</div>,
+  ToolSidebar: () => <div>sidebar</div>,
 }));
 
 vi.mock('@/tool/tool-definition', () => ({
-  baseConverterTool: {
+  dtmfTool: {
     serialize: (state: unknown) => JSON.stringify(state),
-    deserialize: () => ({ success: true, data: { input: 'From Shared Url', inputBase: 10 } }),
+    deserialize: () => ({ success: true, data: { sequence: '555', toneDuration: 150, pauseDuration: 60 } }),
   },
+  sanitizeSequence: (s: string) => s.replace(/[^0-9*#ABCD]/gi, ''),
+  scheduleTones: () => [],
+  playbackDuration: () => 0,
+  clampToneDuration: (n: number) => n,
+  clampPauseDuration: (n: number) => n,
 }));
 
 describe('app client and help page', () => {

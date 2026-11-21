@@ -1,147 +1,203 @@
 'use client';
 
 import React from 'react';
-import {
-  convertToAllBases,
-  parseIntegerInBase,
-  twosComplementInfo,
-  requiredBitLength,
-} from '../tool-definition';
-import type { ToolState } from '../types';
+import { decodeTonePair, isDtmfKey, sanitizeSequence, TONE_PAIR_TABLE } from '../tool-definition';
+import type { DtmfKey, ToolState } from '../types';
 
 interface CanvasProps {
   state: ToolState;
   onChange: (state: ToolState) => void;
+  activeKey?: DtmfKey | null;
+  onPlaySequence?: () => void;
+  onStopPlayback?: () => void;
+  isPlaying?: boolean;
+  onCopySequence?: () => void;
+  copyLabel?: string;
 }
 
-const BASE_LABELS: { base: number; label: string }[] = [
-  { base: 2, label: 'BIN (2)' },
-  { base: 8, label: 'OCT (8)' },
-  { base: 10, label: 'DEC (10)' },
-  { base: 16, label: 'HEX (16)' },
+/** Standard 4x4 telephone keypad layout (1-9, *, 0, # on top of A-D columns). */
+const KEYPAD_LAYOUT: readonly (readonly string[])[] = [
+  ['1', '2', '3', 'A'],
+  ['4', '5', '6', 'B'],
+  ['7', '8', '9', 'C'],
+  ['*', '0', '#', 'D'],
 ];
 
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = React.useState(false);
-  const handleCopy = React.useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard unavailable; ignore
-    }
-  }, [value]);
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className="copy-btn text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-      aria-label="Copy converted value"
-    >
-      {copied ? 'Copied!' : 'Copy'}
-    </button>
-  );
-}
-
-export const Canvas: React.FC<CanvasProps> = ({ state, onChange }) => {
-  const conversions = React.useMemo(() => convertToAllBases(state), [state]);
-  const rows = [
-    ...BASE_LABELS.map(({ base, label }) => ({ base, label, conversion: conversions[base - 2] })),
-    ...Array.from({ length: 30 }, (_, i) => {
-      const base = i + 7;
-      if (base === 8 || base === 10 || base === 16) return null;
-      return { base, label: `Base ${base}`, conversion: conversions[base - 2] };
-    }).filter((r): r is { base: number; label: string; conversion: (typeof conversions)[number] } => r !== null),
-  ];
-
-  const inputValue = parseIntegerInBase(state.input, state.inputBase);
-  const twos = state.showTwosComplement ? twosComplementInfo(state) : null;
-
+export const Canvas: React.FC<CanvasProps> = ({
+  state,
+  onChange,
+  activeKey,
+  onPlaySequence,
+  onStopPlayback,
+  isPlaying = false,
+  onCopySequence,
+  copyLabel = 'Copy',
+}) => {
   const update = (patch: Partial<ToolState>) => onChange({ ...state, ...patch });
 
+  const handleKeyPress = (key: string) => {
+    update({ sequence: state.sequence + key });
+  };
+
+  const handleSequenceInput = (value: string) => {
+    // Sanitize live: keep DTMF keys plus spacing separators the user types.
+    const cleaned = value
+      .toUpperCase()
+      .split('')
+      .filter((char) => isDtmfKey(char) || char === ' ' || char === '-')
+      .join('');
+    update({ sequence: cleaned });
+  };
+
+  const displaySequence = state.sequence.trim().length > 0 ? state.sequence : sanitizeSequence(state.sequence);
+
   return (
-    <div className="p-4 space-y-4 overflow-y-auto h-full" data-testid="base-converter-canvas">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+    <div className="p-4 space-y-4 overflow-y-auto h-full" data-testid="dtmf-canvas">
+      <section aria-label="Dial string">
         <label
-          htmlFor="base-input"
+          htmlFor="dtmf-sequence"
           className="text-xs font-medium uppercase tracking-wider text-gray-700 dark:text-gray-300"
         >
-          Input (base {state.inputBase})
+          Dial string
         </label>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="mt-1 flex items-center gap-2">
           <input
-            id="base-input"
+            id="dtmf-sequence"
             type="text"
-            value={state.input}
-            onChange={(e) => update({ input: e.target.value })}
-            placeholder={`Enter a base-${state.inputBase} number`}
-            className="w-full sm:w-72 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100"
-            aria-describedby="base-input-error"
+            value={displaySequence}
+            onChange={(e) => handleSequenceInput(e.target.value)}
+            placeholder="e.g. 555-0198 or paste a sequence"
+            className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-mono text-gray-900 dark:text-gray-100"
+            data-testid="dtmf-sequence-input"
           />
-          <select
-            aria-label="Input base"
-            value={state.inputBase}
-            onChange={(e) => update({ inputBase: Number(e.target.value) })}
-            className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100"
-          >
-            {Array.from({ length: 35 }, (_, i) => i + 2).map((b) => (
-              <option key={b} value={b}>
-                Base {b}
-              </option>
-            ))}
-          </select>
         </div>
-      </div>
-
-      <div className="grid gap-2">
-        {rows.map((row) => {
-          const { base, label, conversion } = row;
-          if (!conversion) return null;
-          return (
-          <div
-            key={base}
-            className="flex items-center justify-between gap-3 rounded-md border border-gray-200 dark:border-gray-800 px-3 py-2"
-            data-testid={`base-row-${base}`}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={isPlaying ? onStopPlayback : onPlaySequence}
+            disabled={!isPlaying && state.sequence.length === 0}
+            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            data-testid="dtmf-play"
           >
-            <span className="w-20 shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
-            {conversion.error ? (
-              <span role="alert" className="flex-1 text-xs text-red-600 dark:text-red-400">
-                {conversion.error}
-              </span>
-            ) : (
-              <code className="flex-1 break-all font-mono text-sm text-gray-900 dark:text-gray-100">
-                {conversion.formatted || '—'}
-              </code>
-            )}
-            {!conversion.error && conversion.formatted ? <CopyButton value={conversion.formatted} /> : null}
-          </div>
-          );
-        })}
-      </div>
+            {isPlaying ? 'Stop' : 'Play sequence'}
+          </button>
+          <button
+            type="button"
+            onClick={onCopySequence}
+            className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            data-testid="dtmf-copy"
+          >
+            {copyLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => update({ sequence: '' })}
+            className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            data-testid="dtmf-clear"
+          >
+            Clear
+          </button>
+        </div>
+      </section>
 
-      {state.showTwosComplement && (
-        <div className="rounded-md border border-gray-200 dark:border-gray-800 px-3 py-2">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              Two's complement ({state.bitLength} bit)
-            </span>
-            {twos ? <CopyButton value={twos.replace(/ /g, '')} /> : null}
-          </div>
-          {twos ? (
-            <code className="mt-1 block break-all font-mono text-sm text-gray-900 dark:text-gray-100">{twos}</code>
-          ) : (
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Enter a valid integer (no fractional part) to see the two's complement representation.
-            </p>
-          )}
-          {inputValue !== null && (
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Minimum unsigned bit length for magnitude: {requiredBitLength(inputValue)}
-            </p>
+      <section aria-label="Phone keypad">
+        <div className="grid grid-cols-4 gap-2 max-w-xs" data-testid="dtmf-keypad">
+          {KEYPAD_LAYOUT.flatMap((rowKeys, rowIndex) =>
+            rowKeys.map((key, colIndex) => (
+              <button
+                key={`${rowIndex}-${colIndex}-${key}`}
+                type="button"
+                onClick={() => handleKeyPress(key)}
+                className={`rounded-lg border px-2 py-3 text-lg font-semibold transition-colors ${
+                  activeKey === key
+                    ? 'bg-emerald-600 text-white border-emerald-700 scale-95'
+                    : 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 dark:hover:bg-gray-700'
+                }`}
+                data-testid={`dtmf-key-${key}`}
+                aria-label={`Key ${key}`}
+              >
+                {key}
+              </button>
+            ))
           )}
         </div>
-      )}
+      </section>
+
+      <section aria-label="DTMF tone reference">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-gray-700 dark:text-gray-300">
+          Tone pairs
+        </h3>
+        <div className="mt-1 overflow-x-auto">
+          <table className="w-full text-xs" data-testid="dtmf-table">
+            <thead>
+              <tr className="text-left text-gray-500 dark:text-gray-400">
+                <th scope="col" className="py-1 pr-3">Key</th>
+                <th scope="col" className="py-1 pr-3">Low (Hz)</th>
+                <th scope="col" className="py-1 pr-3">High (Hz)</th>
+                <th scope="col" className="py-1">Pair</th>
+              </tr>
+            </thead>
+            <tbody className="font-mono">
+              {TONE_PAIR_TABLE.map((row) => (
+                <tr
+                  key={row.key}
+                  className={activeKey === row.key ? 'bg-emerald-100 dark:bg-emerald-900' : ''}
+                  data-testid={`dtmf-row-${row.key}`}
+                >
+                  <td className="py-1 pr-3 font-semibold">{row.key}</td>
+                  <td className="py-1 pr-3">{row.lowFrequency}</td>
+                  <td className="py-1 pr-3">{row.highFrequency}</td>
+                  <td className="py-1">
+                    {row.lowFrequency}+{row.highFrequency}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Example: 697 Hz + 1209 Hz is the digit 1.{' '}
+          {(() => {
+            const example = decodeTonePair(941, 1477);
+            return example ? `941 Hz + 1477 Hz is ${example}.` : '';
+          })()}
+        </p>
+      </section>
+
+      <section aria-label="Playback timing">
+        <div className="flex flex-wrap gap-4">
+          <div>
+            <label htmlFor="dtmf-tone-duration" className="text-xs text-gray-500 dark:text-gray-400">
+              Tone duration (ms)
+            </label>
+            <input
+              id="dtmf-tone-duration"
+              type="number"
+              min={20}
+              max={3000}
+              value={state.toneDuration}
+              onChange={(e) => update({ toneDuration: Number(e.target.value) })}
+              className="mt-1 block w-24 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-900 dark:text-gray-100"
+              data-testid="dtmf-tone-duration"
+            />
+          </div>
+          <div>
+            <label htmlFor="dtmf-pause-duration" className="text-xs text-gray-500 dark:text-gray-400">
+              Pause between tones (ms)
+            </label>
+            <input
+              id="dtmf-pause-duration"
+              type="number"
+              min={0}
+              max={2000}
+              value={state.pauseDuration}
+              onChange={(e) => update({ pauseDuration: Number(e.target.value) })}
+              className="mt-1 block w-24 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-900 dark:text-gray-100"
+              data-testid="dtmf-pause-duration"
+            />
+          </div>
+        </div>
+      </section>
     </div>
   );
 };

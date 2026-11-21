@@ -1,231 +1,139 @@
 import type { Tool, DeserializeResult } from '@itsjust/core';
 import toolConfig from './tool.config';
 import {
+  DEFAULT_PAUSE_DURATION,
   DEFAULT_STATE,
-  MAX_BASE,
-  MIN_BASE,
-  type BaseConversion,
-  type BitGrouping,
-  type DigitCase,
+  DEFAULT_TONE_DURATION,
+  MAX_PAUSE_DURATION,
+  MAX_TONE_DURATION,
+  MIN_PAUSE_DURATION,
+  MIN_TONE_DURATION,
+  type DtmfKey,
+  type ScheduledTone,
   type ToolState,
+  type TonePairRow,
 } from './types';
 
-const DIGITS = '0123456789abcdefghijklmnopqrstuvwxyz';
+/** Standard DTMF low frequencies (rows of the keypad grid). */
+export const LOW_FREQUENCIES = [697, 770, 852, 941] as const;
+/** Standard DTMF high frequencies (columns of the keypad grid). */
+export const HIGH_FREQUENCIES = [1209, 1336, 1477, 1633] as const;
 
-function digitChar(value: number): string {
-  return DIGITS.charAt(value);
-}
+/** Keypad grid layout: low-frequency rows x high-frequency columns. */
+export const KEYPAD_MATRIX: readonly (readonly (DtmfKey | null)[])[] = [
+  ['1', '2', '3', 'A'],
+  ['4', '5', '6', 'B'],
+  ['7', '8', '9', 'C'],
+  ['*', '0', '#', 'D'],
+];
 
-function digitValue(char: string): number {
-  const lower = char.toLowerCase();
-  const index = DIGITS.indexOf(lower);
-  if (index === -1) return -1;
-  return index;
-}
+export const DTMF_KEYS: readonly DtmfKey[] = KEYPAD_MATRIX.flat().filter((k): k is DtmfKey => k !== null);
 
-/**
- * Parse `input` in `base` into a decimal fraction value.
- * Supports an optional leading sign and a single fractional part.
- * Returns null when input is empty or contains invalid digits.
- */
-export function parseInBase(input: string, base: number): number | null {
-  if (!Number.isInteger(base) || base < MIN_BASE || base > MAX_BASE) return null;
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  const match = /^([+-]?)([0-9a-zA-Z]*)(?:\.([0-9a-zA-Z]*))?$/.exec(trimmed);
-  if (!match) return null;
-  const [, sign = '', intPart = '', fracPart = ''] = match;
-  if (!intPart && !fracPart) return null;
-  let value = 0;
-  for (const char of intPart) {
-    const d = digitValue(char);
-    if (d < 0 || d >= base) return null;
-    value = value * base + d;
-  }
-  let scale = 1 / base;
-  for (const char of fracPart) {
-    const d = digitValue(char);
-    if (d < 0 || d >= base) return null;
-    value += d * scale;
-    scale /= base;
-  }
-  return sign === '-' ? -value : value;
-}
-
-/**
- * Format a non-negative finite number in `base` with up to 12 fractional digits,
- * trimming trailing zeros. Returns null when base is out of range or value invalid.
- */
-export function formatInBase(value: number, base: number): string | null {
-  if (!Number.isInteger(base) || base < MIN_BASE || base > MAX_BASE) return null;
-  if (!Number.isFinite(value)) return null;
-  const sign = value < 0 || Object.is(value, -0) ? '-' : '';
-  const abs = Math.abs(value);
-  let intPart = Math.floor(abs);
-  let frac = abs - intPart;
-  const intDigits: string[] = [];
-  if (intPart === 0) {
-    intDigits.push('0');
-  }
-  while (intPart > 0) {
-    intDigits.unshift(digitChar(intPart % base));
-    intPart = Math.floor(intPart / base);
-  }
-  const fracDigits: string[] = [];
-  const maxFracDigits = 12;
-  while (frac > 0 && fracDigits.length < maxFracDigits) {
-    frac *= base;
-    let digit = Math.floor(frac);
-    if (digit >= base) digit = base - 1;
-    fracDigits.push(digitChar(digit));
-    frac -= digit;
-    if (frac > 1 - 1e-12) {
-      // rounding carry to the last written digit
-      frac = 0;
-    }
-  }
-  // trim trailing zeros
-  while (fracDigits.length > 0 && fracDigits[fracDigits.length - 1] === '0') {
-    fracDigits.pop();
-  }
-  const body = fracDigits.length > 0 ? `${intDigits.join('')}.${fracDigits.join('')}` : intDigits.join('');
-  return sign + body;
-}
-
-/** Parse an integer in the given base; returns null on invalid input or fractions. */
-export function parseIntegerInBase(input: string, base: number): number | null {
-  if (!Number.isInteger(base) || base < MIN_BASE || base > MAX_BASE) return null;
-  const trimmed = input.trim();
-  if (!trimmed || trimmed.includes('.')) return null;
-  const match = /^([+-]?)([0-9a-zA-Z]+)$/.exec(trimmed);
-  if (!match) return null;
-  const [, sign = '', digits = ''] = match;
-  let value = 0;
-  for (const char of digits) {
-    const d = digitValue(char);
-    if (d < 0 || d >= base) return null;
-    value = value * base + d;
-  }
-  return sign === '-' ? -value : value;
-}
-
-/**
- * Unsigned magnitude bits of an integer (no sign bit), at least one digit.
- * For negative numbers this is the magnitude, not two's complement.
- */
-export function toUnsignedBits(value: number, bitLength: number): string {
-  let magnitude = Math.abs(Math.trunc(value));
-  const width = Math.max(1, Math.trunc(bitLength));
-  const bits: string[] = [];
-  while (magnitude > 0) {
-    bits.unshift(magnitude % 2 === 1 ? '1' : '0');
-    magnitude = Math.floor(magnitude / 2);
-  }
-  while (bits.length < width) bits.unshift('0');
-  // truncate to width if the magnitude needs more bits than requested
-  if (bits.length > width) return bits.slice(bits.length - width).join('');
-  return bits.join('');
-}
-
-/** Two's complement representation of an integer at the given bit length. */
-export function toTwosComplement(value: number, bitLength: number): string {
-  const width = Math.max(1, Math.trunc(bitLength));
-  const mod = 2 ** width;
-  let wrapped = Math.trunc(value) % mod;
-  if (wrapped < 0) wrapped += mod;
-  let bits = '';
-  for (let i = width - 1; i >= 0; i--) {
-    bits = ((wrapped >> i) & 1) === 1 ? bits + '1' : bits + '0';
-  }
-  return bits;
-}
-
-/** Group a binary string from the right with a space every `groupSize` bits. */
-export function groupBits(bits: string, groupSize: number): string {
-  if (groupSize <= 0) return bits;
-  const groups: string[] = [];
-  for (let end = bits.length; end > 0; end -= groupSize) {
-    groups.unshift(bits.slice(Math.max(0, end - groupSize), end));
-  }
-  return groups.join(' ');
-}
-
-function applyCase(text: string, digitCase: DigitCase): string {
-  return digitCase === 'upper' ? text.toUpperCase() : text.toLowerCase();
-}
-
-function formatBinary(bits: string, grouping: BitGrouping): string {
-  const size = grouping === 'nibble' ? 4 : grouping === 'byte' ? 8 : 0;
-  return groupBits(bits, size);
-}
-
-function validationError(input: string, base: number): string {
-  if (!input.trim()) {
-    return `Enter a number in base ${base}`;
-  }
-  return `"${input.trim()}" is not a valid base-${base} number. Valid digits: 0-${
-    base <= 10 ? String(base - 1) : `9 and ${DIGITS.slice(10, base).split('').join(', ')}`
-  }`;
-}
-
-/** Convert state.input (interpreted in state.inputBase) to every target base 2..36. */
-export function convertToAllBases(state: ToolState): BaseConversion[] {
-  const results: BaseConversion[] = [];
-  const value = parseInBase(state.input, state.inputBase);
-  for (let base = MIN_BASE; base <= MAX_BASE; base++) {
-    if (base === state.inputBase) {
-      const raw = state.input.trim();
-      results.push({
-        value: raw,
-        formatted: applyCase(raw, state.digitCase),
-        error: null,
+/** Map every DTMF key to its exact tone-pair frequencies. */
+export function buildTonePairTable(): TonePairRow[] {
+  const rows: TonePairRow[] = [];
+  for (let r = 0; r < KEYPAD_MATRIX.length; r++) {
+    for (let c = 0; c < (KEYPAD_MATRIX[r]?.length ?? 0); c++) {
+      const key = KEYPAD_MATRIX[r]?.[c];
+      if (!key) continue;
+      rows.push({
+        key,
+        lowFrequency: LOW_FREQUENCIES[r] as number,
+        highFrequency: HIGH_FREQUENCIES[c] as number,
+        lowLabel: `${LOW_FREQUENCIES[r]} Hz`,
+        highLabel: `${HIGH_FREQUENCIES[c]} Hz`,
       });
-      continue;
     }
-    if (value === null) {
-      results.push({ value: '', formatted: '', error: validationError(state.input, state.inputBase) });
-      continue;
-    }
-    const converted = formatInBase(value, base);
-    if (converted === null) {
-      results.push({ value: '', formatted: '', error: `Cannot represent input in base ${base}` });
-      continue;
-    }
-    const formatted = applyCase(
-      base === 2 ? formattedBinaryOf(value, state) : converted,
-      state.digitCase
-    );
-    results.push({ value: base === 2 ? converted : formatted, formatted, error: null });
   }
-  return results;
+  return rows;
 }
 
-function formattedBinaryOf(value: number, state: ToolState): string {
-  const converted = formatInBase(value, 2) ?? '0';
-  const parts = converted.split('.');
-  const intPart = parts[0] ?? converted;
-  const fracPart = parts.length > 1 ? (parts[1] ?? '') : '';
-  const groupedInt = formatBinary(intPart, state.grouping);
-  return fracPart ? `${groupedInt}.${fracPart}` : groupedInt;
+export const TONE_PAIR_TABLE: TonePairRow[] = buildTonePairTable();
+
+const TONE_PAIR_BY_KEY = new Map<string, TonePairRow>(TONE_PAIR_TABLE.map((row) => [row.key, row]));
+
+/** True when the character is a valid DTMF key. */
+export function isDtmfKey(char: string): char is DtmfKey {
+  return TONE_PAIR_BY_KEY.has(char);
 }
 
-/** Bit length needed to represent the integer magnitude unsigned. */
-export function requiredBitLength(value: number): number {
-  const magnitude = Math.abs(Math.trunc(value));
-  let bits = 1;
-  while (magnitude >= 2 ** bits && bits < 1024) bits++;
-  return bits;
+/**
+ * Decode one DTMF tone pair to its key/symbol. Returns null when either
+ * frequency is not part of the standard DTMF frequency set.
+ */
+export function decodeTonePair(lowFrequency: number, highFrequency: number): DtmfKey | null {
+  const lowIndex = LOW_FREQUENCIES.indexOf(lowFrequency as (typeof LOW_FREQUENCIES)[number]);
+  const highIndex = HIGH_FREQUENCIES.indexOf(highFrequency as (typeof HIGH_FREQUENCIES)[number]);
+  if (lowIndex === -1 || highIndex === -1) return null;
+  return KEYPAD_MATRIX[lowIndex]?.[highIndex] ?? null;
 }
 
-/** Two's complement info string for the state input, or null when not applicable. */
-export function twosComplementInfo(state: ToolState): string | null {
-  const value = parseIntegerInBase(state.input, state.inputBase);
-  if (value === null) return null;
-  const bits = toTwosComplement(value, state.bitLength);
-  return groupBits(bits, state.grouping === 'none' ? 0 : state.grouping === 'nibble' ? 4 : 8);
+/**
+ * Sanitize a dial string: keep only valid DTMF keys, dropping separators
+ * (spaces, dashes) and any other invalid character.
+ */
+export function sanitizeSequence(input: string): string {
+  return input
+    .toUpperCase()
+    .split('')
+    .filter((char) => isDtmfKey(char))
+    .join('');
 }
 
-export const baseConverterTool: Tool<ToolState> = {
+/**
+ * Parse a dial string into scheduled tones: each valid key gets a tone with
+ * the configured duration, separated by the configured pause. Invalid
+ * characters are skipped. `toneDuration`/`pauseDuration` fall back to
+ * defaults when out of range.
+ */
+export function scheduleTones(
+  sequence: string,
+  toneDuration: number,
+  pauseDuration: number
+): ScheduledTone[] {
+  const tone = clampDuration(toneDuration, MIN_TONE_DURATION, MAX_TONE_DURATION, DEFAULT_TONE_DURATION);
+  const pause = clampDuration(pauseDuration, MIN_PAUSE_DURATION, MAX_PAUSE_DURATION, DEFAULT_PAUSE_DURATION);
+  const tones: ScheduledTone[] = [];
+  let cursor = 0;
+  for (const char of sequence.toUpperCase()) {
+    const row = TONE_PAIR_BY_KEY.get(char);
+    if (!row) continue;
+    tones.push({
+      key: row.key,
+      lowFrequency: row.lowFrequency,
+      highFrequency: row.highFrequency,
+      start: cursor,
+      duration: tone,
+    });
+    cursor += tone + pause;
+  }
+  return tones;
+}
+
+function clampDuration(value: number, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+/** Total playback length in milliseconds (last tone end). */
+export function playbackDuration(tones: ScheduledTone[]): number {
+  if (tones.length === 0) return 0;
+  const last = tones[tones.length - 1];
+  if (!last) return 0;
+  return last.start + last.duration;
+}
+
+/** Clamp and normalize tone duration into the allowed range. */
+export function clampToneDuration(value: number): number {
+  return clampDuration(value, MIN_TONE_DURATION, MAX_TONE_DURATION, DEFAULT_TONE_DURATION);
+}
+
+/** Clamp and normalize pause duration into the allowed range. */
+export function clampPauseDuration(value: number): number {
+  return clampDuration(value, MIN_PAUSE_DURATION, MAX_PAUSE_DURATION, DEFAULT_PAUSE_DURATION);
+}
+
+export const dtmfTool: Tool<ToolState> = {
   id: toolConfig.id,
   name: toolConfig.name,
   version: toolConfig.version,
@@ -234,36 +142,20 @@ export const baseConverterTool: Tool<ToolState> = {
   serialize: (state) => JSON.stringify(state),
   deserialize: (data): DeserializeResult<ToolState> => {
     if (typeof data !== 'object' || data === null) {
-      return { success: false, error: 'Invalid data format: expected base converter state object' };
+      return { success: false, error: 'Invalid data format: expected DTMF dial pad state object' };
     }
     const v = data as Partial<ToolState>;
-    const inputOk = typeof v.input === 'string';
-    const baseOk = typeof v.inputBase === 'number' && Number.isInteger(v.inputBase) && v.inputBase >= MIN_BASE && v.inputBase <= MAX_BASE;
-    if (!inputOk || !baseOk) {
-      return {
-        success: false,
-        error: 'Invalid data format: expected { input: string, inputBase: number (2-36), ... }',
-      };
-    }
-    const digitCase: DigitCase = v.digitCase === 'upper' ? 'upper' : 'lower';
-    const grouping: BitGrouping =
-      v.grouping === 'nibble' || v.grouping === 'byte' || v.grouping === 'none' ? v.grouping : 'none';
-    const showTwosComplement = typeof v.showTwosComplement === 'boolean' ? v.showTwosComplement : true;
-    const bitLength =
-      typeof v.bitLength === 'number' && Number.isInteger(v.bitLength) && v.bitLength >= 1
-        ? v.bitLength
-        : DEFAULT_STATE.bitLength;
-    return {
-      success: true,
-      data: {
-        input: v.input as string,
-        inputBase: v.inputBase as number,
-        digitCase,
-        grouping,
-        showTwosComplement,
-        bitLength,
-      },
-    };
+    // Sequence may be legacy/foreign data: sanitize rather than reject.
+    const sequence = typeof v.sequence === 'string' ? sanitizeSequence(v.sequence) : '';
+    const toneDuration =
+      typeof v.toneDuration === 'number' && Number.isFinite(v.toneDuration)
+        ? clampToneDuration(v.toneDuration)
+        : DEFAULT_TONE_DURATION;
+    const pauseDuration =
+      typeof v.pauseDuration === 'number' && Number.isFinite(v.pauseDuration)
+        ? clampPauseDuration(v.pauseDuration)
+        : DEFAULT_PAUSE_DURATION;
+    return { success: true, data: { sequence, toneDuration, pauseDuration } };
   },
   exporters: [
     { format: 'png', loader: () => import('./exporters/png') },
