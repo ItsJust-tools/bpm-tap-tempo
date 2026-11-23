@@ -135,9 +135,7 @@ export default function ToolClient() {
     </>
   );
 
-  const sidebarContent = (
-    <ToolSidebar state={state} onStateChange={handleStateChange} />
-  );
+  const sidebarContent = <ToolSidebar state={state} onStateChange={handleStateChange} />;
 
   const canvasContent = (
     <ToolCanvas

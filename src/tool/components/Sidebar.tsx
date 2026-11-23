@@ -48,8 +48,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ state, onChange }) => {
           />
         </label>
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          Average is computed over taps within the last {Math.round(state.windowMs / 1000)}s
-          (2–30s supported).
+          Average is computed over taps within the last {Math.round(state.windowMs / 1000)}s (2–30s
+          supported).
         </p>
       </div>
 
@@ -65,10 +65,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ state, onChange }) => {
       <div>
         <h3 className="mb-2 font-medium text-gray-900 dark:text-gray-100">Keyboard shortcuts</h3>
         <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-          <li><kbd>Space</kbd> / <kbd>T</kbd> — Tap</li>
-          <li><kbd>R</kbd> — Reset</li>
-          <li><kbd>C</kbd> — Copy BPM</li>
-          <li><kbd>K</kbd> — Toggle click</li>
+          <li>
+            <kbd>Space</kbd> / <kbd>T</kbd> — Tap
+          </li>
+          <li>
+            <kbd>R</kbd> — Reset
+          </li>
+          <li>
+            <kbd>C</kbd> — Copy BPM
+          </li>
+          <li>
+            <kbd>K</kbd> — Toggle click
+          </li>
         </ul>
       </div>
     </div>

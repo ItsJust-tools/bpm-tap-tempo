@@ -89,7 +89,14 @@ export interface BpmStats {
 /** Compute BPM statistics from kept tap timestamps. */
 export function computeBpmStats(taps: number[]): BpmStats {
   if (taps.length < 2) {
-    return { bpm: null, intervalMs: null, minIntervalMs: null, maxIntervalMs: null, bpmMin: null, bpmMax: null };
+    return {
+      bpm: null,
+      intervalMs: null,
+      minIntervalMs: null,
+      maxIntervalMs: null,
+      bpmMin: null,
+      bpmMax: null,
+    };
   }
   const intervals: number[] = [];
   for (let i = 1; i < taps.length; i++) {
@@ -100,7 +107,14 @@ export function computeBpmStats(taps: number[]): BpmStats {
     }
   }
   if (intervals.length === 0) {
-    return { bpm: null, intervalMs: null, minIntervalMs: null, maxIntervalMs: null, bpmMin: null, bpmMax: null };
+    return {
+      bpm: null,
+      intervalMs: null,
+      minIntervalMs: null,
+      maxIntervalMs: null,
+      bpmMin: null,
+      bpmMax: null,
+    };
   }
   const avg = intervals.reduce((sum, d) => sum + d, 0) / intervals.length;
   const minIntervalMs = Math.min(...intervals);

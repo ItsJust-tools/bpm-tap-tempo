@@ -59,11 +59,15 @@ export function deserializeState(data: unknown): DeserializeResult<ToolState> {
   const taps: number[] = [];
   for (const t of v.taps) {
     if (typeof t !== 'number' || !Number.isFinite(t) || t < 0) {
-      return { success: false, error: 'Invalid data format: tap timestamps must be non-negative numbers' };
+      return {
+        success: false,
+        error: 'Invalid data format: tap timestamps must be non-negative numbers',
+      };
     }
     taps.push(Math.round(t));
   }
-  const clickEnabled = typeof v.clickEnabled === 'boolean' ? v.clickEnabled : DEFAULT_STATE.clickEnabled;
+  const clickEnabled =
+    typeof v.clickEnabled === 'boolean' ? v.clickEnabled : DEFAULT_STATE.clickEnabled;
   let windowMs = DEFAULT_STATE.windowMs;
   if (typeof v.windowMs === 'number' && Number.isFinite(v.windowMs)) {
     windowMs = Math.min(MAX_WINDOW_MS, Math.max(MIN_WINDOW_MS, Math.round(v.windowMs)));

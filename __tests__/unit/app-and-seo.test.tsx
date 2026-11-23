@@ -13,11 +13,7 @@ import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
 import { bpmTapTempoTool } from '@/tool/tool-definition';
-import {
-  DEFAULT_STATE,
-  IDLE_TIMEOUT_MS,
-  type ToolState,
-} from '@/tool/types';
+import { DEFAULT_STATE, IDLE_TIMEOUT_MS, type ToolState } from '@/tool/types';
 import type { ExporterLoader } from '@itsjust/core';
 
 vi.mock('next/link', () => ({
@@ -96,7 +92,11 @@ describe('app and seo', () => {
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
     expect(bpmTapTempoTool.id).toBe(toolConfig.id);
     expect(bpmTapTempoTool.name).toBe(toolConfig.name);
-    const idleState: ToolState = { taps: [1, 2], clickEnabled: true, windowMs: DEFAULT_STATE.windowMs };
+    const idleState: ToolState = {
+      taps: [1, 2],
+      clickEnabled: true,
+      windowMs: DEFAULT_STATE.windowMs,
+    };
     const serialized = JSON.parse(bpmTapTempoTool.serialize(idleState));
     expect(serialized.taps).toEqual([1, 2]);
     const bad = bpmTapTempoTool.deserialize({ nope: true });
@@ -104,10 +104,15 @@ describe('app and seo', () => {
     if (!bad.success) {
       expect(bad.error).toContain('Invalid data format');
     }
-    const round = bpmTapTempoTool.deserialize({ taps: [10, 610], clickEnabled: false, windowMs: 8_000 });
+    const round = bpmTapTempoTool.deserialize({
+      taps: [10, 610],
+      clickEnabled: false,
+      windowMs: 8_000,
+    });
     expect(round.success).toBe(true);
     expect(round.success && round.data.windowMs).toBe(8_000);
-    const exporters = (bpmTapTempoTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
+    const exporters =
+      (bpmTapTempoTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
     expect(exporters).toHaveLength(4);
     const first = exporters[0];
     expect(first).toBeDefined();

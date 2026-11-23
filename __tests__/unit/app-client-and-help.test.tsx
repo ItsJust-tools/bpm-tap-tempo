@@ -65,7 +65,14 @@ vi.mock('@/tool', () => ({
     theme: { brand: 'BPM Tap Tempo' },
   },
   templateBaseVersion: '1.4.0',
-  computeBpmStats: () => ({ bpm: 120, intervalMs: 500, minIntervalMs: 500, maxIntervalMs: 500, bpmMin: 120, bpmMax: 120 }),
+  computeBpmStats: () => ({
+    bpm: 120,
+    intervalMs: 500,
+    minIntervalMs: 500,
+    maxIntervalMs: 500,
+    bpmMin: 120,
+    bpmMax: 120,
+  }),
   formatBpm: (bpm: number | null) => (bpm === null ? '—' : bpm.toFixed(1)),
   ToolCanvas: ({ state }: { state: { taps: number[] } }) => <div>canvas:{state.taps.length}</div>,
   ToolToolbar: () => <div>toolbar</div>,
@@ -75,7 +82,10 @@ vi.mock('@/tool', () => ({
 vi.mock('@/tool/tool-definition', () => ({
   bpmTapTempoTool: {
     serialize: (state: unknown) => JSON.stringify(state),
-    deserialize: () => ({ success: true, data: { taps: [], clickEnabled: true, windowMs: 10_000 } }),
+    deserialize: () => ({
+      success: true,
+      data: { taps: [], clickEnabled: true, windowMs: 10_000 },
+    }),
   },
 }));
 

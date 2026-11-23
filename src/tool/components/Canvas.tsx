@@ -43,7 +43,9 @@ export const Canvas: React.FC<CanvasProps> = ({ state }) => {
         <button
           type="button"
           data-testid="btn-tap"
-          onClick={() => {/* wired via keyboard/toolbar; click handled by parent ToolCanvas */}}
+          onClick={() => {
+            /* wired via keyboard/toolbar; click handled by parent ToolCanvas */
+          }}
           className={`tap-pad ${pulse ? 'tap-pad-pulse' : ''}`}
           aria-label="Tap to register a beat"
           style={{ cursor: 'default' }}
@@ -58,32 +60,44 @@ export const Canvas: React.FC<CanvasProps> = ({ state }) => {
             Tap here or press Space to count beats
           </span>
         </button>
-        <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400" role="status" data-testid="tap-count">
+        <p
+          className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400"
+          role="status"
+          data-testid="tap-count"
+        >
           {state.taps.length} tap{state.taps.length === 1 ? '' : 's'}
         </p>
       </div>
 
       <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4" data-testid="bpm-stats">
         <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
-          <dt className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Interval</dt>
+          <dt className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            Interval
+          </dt>
           <dd className="mt-1 font-mono text-lg" data-testid="stat-interval">
             {interval === null ? '—' : `${Math.round(interval)} ms`}
           </dd>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
-          <dt className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">BPM min</dt>
+          <dt className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            BPM min
+          </dt>
           <dd className="mt-1 font-mono text-lg" data-testid="stat-bpm-min">
             {formatBpm(stats.bpmMin)}
           </dd>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
-          <dt className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">BPM max</dt>
+          <dt className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            BPM max
+          </dt>
           <dd className="mt-1 font-mono text-lg" data-testid="stat-bpm-max">
             {formatBpm(stats.bpmMax)}
           </dd>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
-          <dt className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Span</dt>
+          <dt className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            Span
+          </dt>
           <dd className="mt-1 font-mono text-lg" data-testid="stat-span">
             {stats.minIntervalMs === null
               ? '—'
@@ -96,7 +110,12 @@ export const Canvas: React.FC<CanvasProps> = ({ state }) => {
         <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
           Preset tempo reference
         </h3>
-        <div className="grid grid-cols-5 gap-2" data-testid="preset-grid" role="list" aria-label="Preset BPM reference grid">
+        <div
+          className="grid grid-cols-5 gap-2"
+          data-testid="preset-grid"
+          role="list"
+          aria-label="Preset BPM reference grid"
+        >
           {PRESET_BPM.map((value) => (
             <div
               key={value}
@@ -116,7 +135,8 @@ export const Canvas: React.FC<CanvasProps> = ({ state }) => {
       </div>
 
       <p className="text-center text-xs text-gray-500 dark:text-gray-400">
-        Tap sequence resets automatically after 2 seconds of inactivity. Recent taps are averaged within the selected window.
+        Tap sequence resets automatically after 2 seconds of inactivity. Recent taps are averaged
+        within the selected window.
       </p>
     </div>
   );
